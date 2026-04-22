@@ -21,14 +21,14 @@
         Back
       </AppButton>
       <AppButton
-        icon="activity"
+        icon="arrow-right"
         :disabled="isBusy"
         @click="runPlayerCommand(goForward)"
       >
         Forward
       </AppButton>
       <AppButton
-        icon="activity"
+        icon="rotate-cw"
         :disabled="isBusy"
         @click="runPlayerCommand(reloadPlayer)"
       >
@@ -39,13 +39,6 @@
         to="/"
       >
         Home
-      </AppButton>
-      <AppButton
-        icon="download"
-        to="/detection"
-        variant="primary"
-      >
-        Detection preview
       </AppButton>
     </section>
 
@@ -73,36 +66,30 @@
           Open
         </AppButton>
       </form>
-      <div class="browserFrame__body">
-        <IconGlyph name="shield" />
-        <p>{{ playerMessage }}</p>
-      </div>
+      <p
+        v-if="errorMessage"
+        class="inlineError"
+      >
+        {{ errorMessage }}
+      </p>
     </section>
 
-    <section class="sectionBlock">
+    <section class="sectionBlock sectionBlock--compact">
       <h2>Detection state</h2>
-      <div class="metricGrid">
-        <div class="metricTile">
+      <div class="detectionStrip">
+        <div>
           <span>Status</span>
           <strong>{{ detectionStatus }}</strong>
         </div>
-        <div class="metricTile">
+        <div>
           <span>Last request</span>
           <strong>{{ lastRequestLabel }}</strong>
         </div>
-        <div class="metricTile">
+        <div>
           <span>Player</span>
           <strong>{{ playerStateLabel }}</strong>
         </div>
-        <div class="metricTile">
-          <span>Current page</span>
-          <strong>{{ playerState?.title ?? 'None' }}</strong>
-        </div>
-        <div class="metricTile">
-          <span>Selected file</span>
-          <strong>{{ confirmedFileLabel }}</strong>
-        </div>
-        <div class="metricTile">
+        <div>
           <span>Download</span>
           <strong>{{ downloadProgressLabel }}</strong>
         </div>
@@ -121,12 +108,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
+  listenForCaptureDownloadRequested,
   listenForCaptureRequest,
   listenForMasterDetected,
+  type CaptureDownloadRequestPayload,
   type CaptureRequestPayload,
 } from '@/api/capture';
 import {
-  listenForDownloadHistoryUpdates,
   listenForDownloadProgress,
   startDownload,
   type DownloadProgressPayload,
@@ -142,13 +130,14 @@ import {
 } from '@/api/player';
 import AppButton from '@/app/components/AppButton.vue';
 import DetectionDialog from '@/app/components/DetectionDialog.vue';
-import IconGlyph from '@/app/components/IconGlyph.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
 import { useDetectionStore } from '@/stores/detection';
 import { useDownloadsStore } from '@/stores/downloads';
 import { clearActiveTextInteraction } from '@/utils/dom';
 
-const targetUrl = ref('https://example.com');
+const LAST_PLAYER_URL_KEY = 'streamkeep:last-player-url';
+
+const targetUrl = ref(readLastPlayerUrl());
 const playerState = ref<PlayerState | null>(null);
 const lastRequest = ref<CaptureRequestPayload | null>(null);
 const lastDetectedMaster = ref<CaptureRequestPayload | null>(null);
@@ -175,25 +164,6 @@ const playerStateLabel = computed(() => {
   return 'Closed';
 });
 
-const playerMessage = computed(() => {
-  if (errorMessage.value) {
-    return errorMessage.value;
-  }
-  if (latestDownloadResult.value) {
-    return `Saved ${latestDownloadResult.value.outputName}`;
-  }
-  if (detection.confirmedIntent) {
-    return `Ready to download ${detection.confirmedIntent.fileName}`;
-  }
-  if (lastDetectedMaster.value?.masterUrl) {
-    return lastDetectedMaster.value.masterUrl;
-  }
-  if (playerState.value?.visible && playerState.value.url) {
-    return playerState.value.url;
-  }
-  return 'Open the Android player to browse and sign in inside Streamkeep.';
-});
-
 const detectionStatus = computed(() => {
   if (pendingStream.value) {
     return 'Confirm download';
@@ -216,10 +186,6 @@ const lastRequestLabel = computed(() => {
     return 'None';
   }
   return `${lastRequest.value.requestType}: ${lastRequest.value.url}`;
-});
-
-const confirmedFileLabel = computed(() => {
-  return latestDownloadResult.value?.outputName ?? detection.confirmedIntent?.fileName ?? 'None';
 });
 
 const downloadProgressLabel = computed(() => {
@@ -246,30 +212,34 @@ const downloadProgressLabel = computed(() => {
 onMounted(async () => {
   const requestListener = await listenForCaptureRequest((payload) => {
     lastRequest.value = payload;
+    persistPlayerUrl(payload.pageUrl);
   });
   const masterListener = await listenForMasterDetected((payload) => {
     lastRequest.value = payload;
     lastDetectedMaster.value = payload;
+    persistPlayerUrl(payload.pageUrl);
     detection.registerDetectedPayload(payload);
   });
   listenerCleanup.value = [
     () => requestListener.unregister(),
     () => masterListener.unregister(),
   ];
+  const nativeDownloadListener = await listenForCaptureDownloadRequested((payload) => {
+    applyDetectedPayload(payload);
+    void confirmDownload(payload.requestedFileNameStem, 'best-available');
+  });
+  listenerCleanup.value.push(() => nativeDownloadListener.unregister());
   const downloadProgressListener = await listenForDownloadProgress((payload) => {
     activeDownloadProgress.value = payload;
-    downloads.applyProgress(payload);
   });
   listenerCleanup.value.push(async () => {
     downloadProgressListener();
   });
-  const historyListener = await listenForDownloadHistoryUpdates((payload) => {
-    downloads.upsertRecord(payload);
+  await runPlayerCommand(async () => {
+    const state = await getPlayerState();
+    persistPlayerUrl(state.url);
+    return state;
   });
-  listenerCleanup.value.push(async () => {
-    historyListener();
-  });
-  await runPlayerCommand(getPlayerState);
 });
 
 onBeforeUnmount(() => {
@@ -280,6 +250,7 @@ onBeforeUnmount(() => {
 
 async function openPlayerUrl() {
   clearActiveTextInteraction();
+  persistPlayerUrl(targetUrl.value);
   await runPlayerCommand(() => openPlayer(targetUrl.value));
 }
 
@@ -309,6 +280,9 @@ async function confirmDownload(fileNameStem: string, qualityId: string) {
     status: 'queued',
     completedSegments: 0,
     totalSegments: null,
+    currentSegmentIndex: null,
+    currentSegmentDownloadedBytes: null,
+    currentSegmentTotalBytes: null,
     downloadedBytes: 0,
     totalBytes: null,
     message: 'queued',
@@ -338,6 +312,9 @@ async function confirmDownload(fileNameStem: string, qualityId: string) {
       status: 'failed',
       completedSegments: activeDownloadProgress.value?.completedSegments ?? 0,
       totalSegments: activeDownloadProgress.value?.totalSegments ?? null,
+      currentSegmentIndex: activeDownloadProgress.value?.currentSegmentIndex ?? null,
+      currentSegmentDownloadedBytes: activeDownloadProgress.value?.currentSegmentDownloadedBytes ?? null,
+      currentSegmentTotalBytes: activeDownloadProgress.value?.currentSegmentTotalBytes ?? null,
       downloadedBytes: activeDownloadProgress.value?.downloadedBytes ?? 0,
       totalBytes: activeDownloadProgress.value?.totalBytes ?? null,
       message: error instanceof Error ? error.message : String(error),
@@ -353,6 +330,7 @@ async function runPlayerCommand(command: () => Promise<PlayerState>) {
   errorMessage.value = null;
   try {
     playerState.value = await command();
+    persistPlayerUrl(playerState.value.url);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   } finally {
@@ -365,9 +343,35 @@ function progressPercent(progress: DownloadProgressPayload): number | null {
     return Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes);
   }
   if (progress.totalSegments && progress.totalSegments > 0) {
-    return Math.floor((Math.min(progress.completedSegments, progress.totalSegments) * 100) / progress.totalSegments);
+    const currentSegmentProgress =
+      progress.currentSegmentDownloadedBytes && progress.currentSegmentTotalBytes
+        ? Math.min(progress.currentSegmentDownloadedBytes, progress.currentSegmentTotalBytes) /
+          progress.currentSegmentTotalBytes
+        : 0;
+    const completedSegments = Math.min(progress.completedSegments, progress.totalSegments);
+    return Math.floor(((completedSegments + currentSegmentProgress) * 100) / progress.totalSegments);
   }
   return null;
+}
+
+function applyDetectedPayload(payload: CaptureRequestPayload | CaptureDownloadRequestPayload) {
+  lastRequest.value = payload;
+  lastDetectedMaster.value = payload;
+  persistPlayerUrl(payload.pageUrl);
+  detection.registerDetectedPayload(payload);
+}
+
+function readLastPlayerUrl(): string {
+  return globalThis.localStorage?.getItem(LAST_PLAYER_URL_KEY) ?? 'https://example.com';
+}
+
+function persistPlayerUrl(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return;
+  }
+  targetUrl.value = normalized;
+  globalThis.localStorage?.setItem(LAST_PLAYER_URL_KEY, normalized);
 }
 
 </script>

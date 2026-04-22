@@ -130,7 +130,13 @@ function progressPercent(progress: DownloadProgressPayload): number | null {
     return Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes);
   }
   if (progress.totalSegments && progress.totalSegments > 0) {
-    return Math.floor((Math.min(progress.completedSegments, progress.totalSegments) * 100) / progress.totalSegments);
+    const currentSegmentProgress =
+      progress.currentSegmentDownloadedBytes && progress.currentSegmentTotalBytes
+        ? Math.min(progress.currentSegmentDownloadedBytes, progress.currentSegmentTotalBytes) /
+          progress.currentSegmentTotalBytes
+        : 0;
+    const completedSegments = Math.min(progress.completedSegments, progress.totalSegments);
+    return Math.floor(((completedSegments + currentSegmentProgress) * 100) / progress.totalSegments);
   }
   return null;
 }

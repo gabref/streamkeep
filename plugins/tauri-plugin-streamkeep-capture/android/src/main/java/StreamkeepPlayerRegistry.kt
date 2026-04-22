@@ -35,6 +35,7 @@ data class StreamkeepPlayerSnapshot(
 object StreamkeepPlayerRegistry {
   private const val REQUEST_SEEN_EVENT = "capture:request-seen"
   private const val MASTER_DETECTED_EVENT = "capture:master-detected"
+  private const val DOWNLOAD_REQUESTED_EVENT = "capture:download-requested"
   private const val STREAM_DETECTED_EVENT = "stream-detected"
   private const val DEBOUNCE_MS = 30_000L
 
@@ -91,9 +92,17 @@ object StreamkeepPlayerRegistry {
     plugin.emitCaptureEvent(REQUEST_SEEN_EVENT, payload)
 
     if (requestType == "master") {
+      playerRef?.get()?.showDetectedStream(copyPayload(payload))
       plugin.emitCaptureEvent(MASTER_DETECTED_EVENT, payload)
       plugin.emitCaptureEvent(STREAM_DETECTED_EVENT, payload)
     }
+  }
+
+  fun requestDownload(payload: JSObject, fileNameStem: String) {
+    val plugin = pluginRef?.get() ?: return
+    val requestPayload = copyPayload(payload)
+    requestPayload.put("requestedFileNameStem", sanitizeFileNameStem(fileNameStem))
+    plugin.emitCaptureEvent(DOWNLOAD_REQUESTED_EVENT, requestPayload)
   }
 
   fun snapshot(): JSObject {
@@ -184,6 +193,25 @@ object StreamkeepPlayerRegistry {
     payload.put("requestType", requestType)
     payload.put("confidence", if (requestType == "master") "strong" else "candidate")
     return payload
+  }
+
+  private fun copyPayload(payload: JSObject): JSObject {
+    val copy = JSObject()
+    val keys = payload.keys()
+    while (keys.hasNext()) {
+      val key = keys.next()
+      copy.put(key, payload.opt(key))
+    }
+    return copy
+  }
+
+  private fun sanitizeFileNameStem(value: String): String {
+    val cleaned = value
+      .replace(Regex("""[<>:"/\\|?*\u0000-\u001F]"""), " ")
+      .replace(Regex("""\s+"""), " ")
+      .trim('.', ' ')
+      .removeSuffix(".mp4")
+    return cleaned.ifBlank { "Streamkeep capture" }
   }
 
   private fun getHeader(headers: Map<String, String>, name: String): String? {

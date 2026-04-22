@@ -19,6 +19,7 @@ data class StreamkeepPublishResult(
 object StreamkeepMediaStorePublisher {
   private const val MIME_TYPE = "video/mp4"
   private const val STREAMKEEP_FOLDER = "Streamkeep"
+  private const val COPY_BUFFER_SIZE = 1024 * 1024
 
   fun publishToDownloads(
     activity: Activity,
@@ -59,7 +60,7 @@ object StreamkeepMediaStorePublisher {
       resolver.openOutputStream(uri, "w").use { output ->
         requireNotNull(output) { "Failed to open MediaStore output stream" }
         inputFile.inputStream().use { input ->
-          input.copyTo(output)
+          input.copyTo(output, bufferSize = COPY_BUFFER_SIZE)
         }
       }
 
@@ -90,7 +91,14 @@ object StreamkeepMediaStorePublisher {
     outputDir.mkdirs()
 
     val outputFile = uniqueFile(outputDir, displayName)
-    inputFile.copyTo(outputFile, overwrite = false)
+    if (!inputFile.renameTo(outputFile)) {
+      inputFile.inputStream().use { input ->
+        outputFile.outputStream().use { output ->
+          input.copyTo(output, bufferSize = COPY_BUFFER_SIZE)
+        }
+      }
+      inputFile.delete()
+    }
     MediaScannerConnection.scanFile(
       activity,
       arrayOf(outputFile.absolutePath),

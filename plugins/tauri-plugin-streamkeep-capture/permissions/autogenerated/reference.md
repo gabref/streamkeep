@@ -344,4 +344,56 @@ Denies the remuxToMp4 command without any pre-configured scope.
 
 </td>
 </tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:allow-startDownloadKeepAlive`
+
+</td>
+<td>
+
+Enables the startDownloadKeepAlive command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-startDownloadKeepAlive`
+
+</td>
+<td>
+
+Denies the startDownloadKeepAlive command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:allow-stopDownloadKeepAlive`
+
+</td>
+<td>
+
+Enables the stopDownloadKeepAlive command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-stopDownloadKeepAlive`
+
+</td>
+<td>
+
+Denies the stopDownloadKeepAlive command without any pre-configured scope.
+
+</td>
+</tr>
 </table>

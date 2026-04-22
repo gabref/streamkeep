@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use m3u8_rs::{KeyMethod, Playlist, parse_playlist_res};
@@ -14,6 +14,10 @@ use streamkeep_hls_core::{HlsError, parse_master_playlist};
 use thiserror::Error;
 use tracing::{debug, info};
 use url::Url;
+
+const OUTPUT_BUFFER_SIZE: usize = 1024 * 1024;
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
+const PROGRESS_EMIT_BYTES: u64 = 512 * 1024;
 
 #[derive(Debug, Error)]
 pub enum DownloadError {
@@ -83,6 +87,12 @@ pub struct DownloadProgress {
     pub status: DownloadStatus,
     pub completed_segments: u32,
     pub total_segments: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_segment_index: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_segment_downloaded_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_segment_total_bytes: Option<u64>,
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -95,6 +105,9 @@ impl DownloadProgress {
             status: DownloadStatus::Queued,
             completed_segments: 0,
             total_segments: None,
+            current_segment_index: None,
+            current_segment_downloaded_bytes: None,
+            current_segment_total_bytes: None,
             downloaded_bytes: 0,
             total_bytes: None,
             message: None,
@@ -118,7 +131,17 @@ impl DownloadProgress {
             return Some(0);
         }
 
-        Some(((self.completed_segments.min(total_segments) * 100) / total_segments) as u8)
+        let current_segment_progress = match (
+            self.current_segment_downloaded_bytes,
+            self.current_segment_total_bytes,
+        ) {
+            (Some(downloaded), Some(total)) if total > 0 => {
+                downloaded.min(total) as f64 / total as f64
+            }
+            _ => 0.0,
+        };
+        let completed = self.completed_segments.min(total_segments) as f64;
+        Some((((completed + current_segment_progress) * 100.0) / total_segments as f64) as u8)
     }
 }
 
@@ -209,10 +232,13 @@ pub async fn download_segments_to_transport_stream(
     );
     let total_segments = Some(plan.segments.len() as u32);
     let output_path = output_path.as_ref();
-    let mut output = File::create(output_path).map_err(|source| DownloadError::Io {
-        path: output_path.to_path_buf(),
-        source,
-    })?;
+    let mut output = BufWriter::with_capacity(
+        OUTPUT_BUFFER_SIZE,
+        File::create(output_path).map_err(|source| DownloadError::Io {
+            path: output_path.to_path_buf(),
+            source,
+        })?,
+    );
     let mut downloaded_bytes = 0_u64;
     let mut completed_segments = 0_u32;
 
@@ -220,6 +246,9 @@ pub async fn download_segments_to_transport_stream(
         status: DownloadStatus::Downloading,
         completed_segments,
         total_segments,
+        current_segment_index: None,
+        current_segment_downloaded_bytes: None,
+        current_segment_total_bytes: None,
         downloaded_bytes,
         total_bytes: None,
         message: Some("writing segments".to_owned()),
@@ -231,18 +260,24 @@ pub async fn download_segments_to_transport_stream(
             url = %segment.url,
             "fetching media segment"
         );
-        let bytes = fetch_bytes(&client, &segment.url).await?;
-        output
-            .write_all(&bytes)
-            .map_err(|source| DownloadError::Io {
-                path: output_path.to_path_buf(),
-                source,
-            })?;
-        downloaded_bytes += bytes.len() as u64;
+        let segment_download = fetch_segment_to_writer(
+            &client,
+            segment,
+            output_path,
+            &mut output,
+            SegmentProgressContext {
+                completed_segments,
+                total_segments,
+                initial_downloaded_bytes: downloaded_bytes,
+            },
+            &mut on_progress,
+        )
+        .await?;
+        downloaded_bytes += segment_download.bytes;
         completed_segments += 1;
         debug!(
             index = segment.index,
-            segment_bytes = bytes.len(),
+            segment_bytes = segment_download.bytes,
             completed_segments,
             downloaded_bytes,
             "wrote media segment"
@@ -251,6 +286,9 @@ pub async fn download_segments_to_transport_stream(
             status: DownloadStatus::Downloading,
             completed_segments,
             total_segments,
+            current_segment_index: Some(segment.index),
+            current_segment_downloaded_bytes: Some(segment_download.bytes),
+            current_segment_total_bytes: segment_download.total_bytes,
             downloaded_bytes,
             total_bytes: None,
             message: Some(format!("downloaded segment {}", segment.index + 1)),
@@ -272,6 +310,9 @@ pub async fn download_segments_to_transport_stream(
         status: DownloadStatus::Remuxing,
         completed_segments,
         total_segments,
+        current_segment_index: None,
+        current_segment_downloaded_bytes: None,
+        current_segment_total_bytes: None,
         downloaded_bytes,
         total_bytes: None,
         message: Some("remuxing transport stream".to_owned()),
@@ -424,33 +465,87 @@ async fn fetch_text(client: &Client, url: &str) -> Result<String, DownloadError>
         })
 }
 
-async fn fetch_bytes(client: &Client, url: &str) -> Result<bytes::Bytes, DownloadError> {
-    debug!(%url, "fetching byte resource");
+#[derive(Debug, Clone, Copy)]
+struct SegmentDownload {
+    bytes: u64,
+    total_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SegmentProgressContext {
+    completed_segments: u32,
+    total_segments: Option<u32>,
+    initial_downloaded_bytes: u64,
+}
+
+async fn fetch_segment_to_writer(
+    client: &Client,
+    segment: &MediaSegmentPlan,
+    output_path: &Path,
+    output: &mut BufWriter<File>,
+    progress_context: SegmentProgressContext,
+    on_progress: &mut impl FnMut(DownloadProgress),
+) -> Result<SegmentDownload, DownloadError> {
+    debug!(url = %segment.url, "fetching byte resource");
     let response = client
-        .get(url)
+        .get(&segment.url)
         .send()
         .await
         .map_err(|source| DownloadError::Http {
-            url: url.to_owned(),
+            url: segment.url.clone(),
             source,
         })?
         .error_for_status()
         .map_err(|source| DownloadError::Http {
-            url: url.to_owned(),
+            url: segment.url.clone(),
             source,
         })?;
+    let total_bytes = response.content_length();
     let mut stream = response.bytes_stream();
-    let mut bytes = bytes::BytesMut::new();
+    let mut segment_downloaded_bytes = 0_u64;
+    let mut downloaded_bytes = progress_context.initial_downloaded_bytes;
+    let mut last_progress_at = Instant::now();
+    let mut last_progress_bytes = 0_u64;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|source| DownloadError::Http {
-            url: url.to_owned(),
+            url: segment.url.clone(),
             source,
         })?;
-        bytes.extend_from_slice(&chunk);
+        output
+            .write_all(&chunk)
+            .map_err(|source| DownloadError::Io {
+                path: output_path.to_path_buf(),
+                source,
+            })?;
+        let chunk_len = chunk.len() as u64;
+        segment_downloaded_bytes += chunk_len;
+        downloaded_bytes += chunk_len;
+
+        let now = Instant::now();
+        if now.duration_since(last_progress_at) >= PROGRESS_EMIT_INTERVAL
+            || segment_downloaded_bytes.saturating_sub(last_progress_bytes) >= PROGRESS_EMIT_BYTES
+        {
+            last_progress_at = now;
+            last_progress_bytes = segment_downloaded_bytes;
+            on_progress(DownloadProgress {
+                status: DownloadStatus::Downloading,
+                completed_segments: progress_context.completed_segments,
+                total_segments: progress_context.total_segments,
+                current_segment_index: Some(segment.index),
+                current_segment_downloaded_bytes: Some(segment_downloaded_bytes),
+                current_segment_total_bytes: total_bytes,
+                downloaded_bytes,
+                total_bytes: None,
+                message: Some(format!("downloading segment {}", segment.index + 1)),
+            });
+        }
     }
 
-    Ok(bytes.freeze())
+    Ok(SegmentDownload {
+        bytes: segment_downloaded_bytes,
+        total_bytes,
+    })
 }
 
 fn headers_for_request(request: &DownloadRequest) -> Result<HeaderMap, DownloadError> {
@@ -495,6 +590,9 @@ mod tests {
             status: DownloadStatus::Downloading,
             completed_segments: 12,
             total_segments: Some(10),
+            current_segment_index: None,
+            current_segment_downloaded_bytes: None,
+            current_segment_total_bytes: None,
             downloaded_bytes: 0,
             total_bytes: None,
             message: None,
@@ -509,6 +607,9 @@ mod tests {
             status: DownloadStatus::Downloading,
             completed_segments: 1,
             total_segments: Some(10),
+            current_segment_index: None,
+            current_segment_downloaded_bytes: None,
+            current_segment_total_bytes: None,
             downloaded_bytes: 75,
             total_bytes: Some(100),
             message: None,

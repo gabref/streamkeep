@@ -9,6 +9,7 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.util.concurrent.Executors
 
 @InvokeArg
 class OpenPlayerArgs {
@@ -40,6 +41,12 @@ class OpenUriArgs {
 
 @TauriPlugin
 class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity) {
+  private val ioExecutor = Executors.newSingleThreadExecutor { runnable ->
+    Thread(runnable, "StreamkeepCaptureIO").apply {
+      isDaemon = true
+    }
+  }
+
   init {
     StreamkeepPlayerRegistry.attachPlugin(this)
   }
@@ -109,12 +116,18 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   fun remuxToMp4(invoke: Invoke) {
     try {
       val args = invoke.parseArgs(RemuxToMp4Args::class.java)
-      val result = StreamkeepMp4Remuxer.remuxToMp4(args.inputPath, args.outputPath)
-      val payload = JSObject()
-      payload.put("outputPath", result.outputPath)
-      payload.put("trackCount", result.trackCount)
-      payload.put("outputBytes", result.outputBytes)
-      invoke.resolve(payload)
+      ioExecutor.execute {
+        try {
+          val result = StreamkeepMp4Remuxer.remuxToMp4(args.inputPath, args.outputPath)
+          val payload = JSObject()
+          payload.put("outputPath", result.outputPath)
+          payload.put("trackCount", result.trackCount)
+          payload.put("outputBytes", result.outputBytes)
+          activity.runOnUiThread { invoke.resolve(payload) }
+        } catch (ex: Exception) {
+          activity.runOnUiThread { invoke.reject(ex.message ?: "Failed to remux media to MP4") }
+        }
+      }
     } catch (ex: Exception) {
       invoke.reject(ex.message ?: "Failed to remux media to MP4")
     }
@@ -124,19 +137,45 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   fun publishToDownloads(invoke: Invoke) {
     try {
       val args = invoke.parseArgs(PublishToDownloadsArgs::class.java)
-      val result = StreamkeepMediaStorePublisher.publishToDownloads(
-        activity = activity,
-        inputPath = args.inputPath,
-        displayName = args.displayName
-      )
-      val payload = JSObject()
-      payload.put("contentUri", result.contentUri)
-      payload.put("displayName", result.displayName)
-      payload.put("relativePath", result.relativePath)
-      payload.put("outputBytes", result.outputBytes)
-      invoke.resolve(payload)
+      ioExecutor.execute {
+        try {
+          val result = StreamkeepMediaStorePublisher.publishToDownloads(
+            activity = activity,
+            inputPath = args.inputPath,
+            displayName = args.displayName
+          )
+          val payload = JSObject()
+          payload.put("contentUri", result.contentUri)
+          payload.put("displayName", result.displayName)
+          payload.put("relativePath", result.relativePath)
+          payload.put("outputBytes", result.outputBytes)
+          activity.runOnUiThread { invoke.resolve(payload) }
+        } catch (ex: Exception) {
+          activity.runOnUiThread { invoke.reject(ex.message ?: "Failed to publish MP4 to Downloads") }
+        }
+      }
     } catch (ex: Exception) {
       invoke.reject(ex.message ?: "Failed to publish MP4 to Downloads")
+    }
+  }
+
+  @Command
+  fun startDownloadKeepAlive(invoke: Invoke) {
+    try {
+      StreamkeepDownloadService.start(activity)
+      invoke.resolve()
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "Failed to start Streamkeep download service")
+    }
+  }
+
+  @Command
+  fun stopDownloadKeepAlive(invoke: Invoke) {
+    try {
+      StreamkeepDownloadService.stop(activity)
+      invoke.resolve()
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "Failed to stop Streamkeep download service")
     }
   }
 
@@ -158,7 +197,7 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   private fun normalizeUrl(value: String?): String {
     val trimmed = value?.trim().orEmpty()
     if (trimmed.isEmpty()) {
-      return StreamkeepPlayerActivity.DEFAULT_URL
+      return StreamkeepPlayerActivity.lastUrl(activity)
     }
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       return trimmed

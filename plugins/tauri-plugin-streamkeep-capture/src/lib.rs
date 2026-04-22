@@ -189,6 +189,30 @@ impl<R: Runtime> StreamkeepCapture<R> {
         }
     }
 
+    pub fn start_download_keep_alive(&self) -> Result<(), String> {
+        #[cfg(mobile)]
+        {
+            return self.run_mobile("startDownloadKeepAlive", serde_json::json!({}));
+        }
+
+        #[cfg(not(mobile))]
+        {
+            Ok(())
+        }
+    }
+
+    pub fn stop_download_keep_alive(&self) -> Result<(), String> {
+        #[cfg(mobile)]
+        {
+            return self.run_mobile("stopDownloadKeepAlive", serde_json::json!({}));
+        }
+
+        #[cfg(not(mobile))]
+        {
+            Ok(())
+        }
+    }
+
     fn run_empty_command(&self, command: &str) -> Result<PlayerState, String> {
         #[cfg(mobile)]
         {

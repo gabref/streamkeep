@@ -2,6 +2,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -15,8 +16,10 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_streamkeep_capture::{
     OpenUriRequest, PublishToDownloadsRequest, RemuxToMp4Request, StreamkeepCaptureExt,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+const HISTORY_PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,23 +122,37 @@ pub async fn start_download_command<R: Runtime>(
     });
     let job_id = job_record.id.to_string();
     persist_job_record(&history_path, job_record.clone())?;
+    let _ = app.emit("download:history-updated", job_record.clone());
+    let _download_keep_alive = DownloadKeepAlive::start(app.clone());
 
     let app_for_progress = app.clone();
     let history_path_for_progress = history_path.clone();
     let job_id_for_progress = job_id.clone();
     let progress_record = Arc::new(Mutex::new(job_record.clone()));
     let progress_record_for_callback = progress_record.clone();
+    let mut last_persisted_status: Option<DownloadJobStatus> = None;
+    let mut last_persisted_percent: Option<u8> = None;
+    let mut last_persisted_at = Instant::now() - HISTORY_PROGRESS_PERSIST_INTERVAL;
     let segment_result = download_segments_to_transport_stream(
         &download_request,
         &transport_path,
         move |progress| {
+            let job_status = job_status_from_download(progress.status);
+            let progress_percent = progress.percent();
             if let Ok(mut record) = progress_record_for_callback.lock() {
-                record.apply_progress(
-                    job_status_from_download(progress.status),
-                    progress.percent(),
-                );
-                if let Err(error) = persist_job_record(&history_path_for_progress, record.clone()) {
-                    error!(?error, "failed to persist download progress");
+                record.apply_progress(job_status, progress_percent);
+                let should_persist = last_persisted_status != Some(job_status)
+                    || last_persisted_percent != progress_percent
+                    || last_persisted_at.elapsed() >= HISTORY_PROGRESS_PERSIST_INTERVAL;
+                if should_persist {
+                    if let Err(error) =
+                        persist_job_record(&history_path_for_progress, record.clone())
+                    {
+                        error!(?error, "failed to persist download progress");
+                    }
+                    last_persisted_status = Some(job_status);
+                    last_persisted_percent = progress_percent;
+                    last_persisted_at = Instant::now();
                 }
             }
             emit_download_progress(&app_for_progress, &job_id_for_progress, progress);
@@ -170,6 +187,9 @@ pub async fn start_download_command<R: Runtime>(
                 status: DownloadStatus::Remuxing,
                 completed_segments: segment_result.completed_segments,
                 total_segments: Some(segment_result.completed_segments),
+                current_segment_index: None,
+                current_segment_downloaded_bytes: None,
+                current_segment_total_bytes: None,
                 downloaded_bytes: segment_result.downloaded_bytes,
                 total_bytes: None,
                 message: Some("remuxing transport stream".to_owned()),
@@ -214,6 +234,9 @@ pub async fn start_download_command<R: Runtime>(
                 status: DownloadStatus::Remuxing,
                 completed_segments: segment_result.completed_segments,
                 total_segments: Some(segment_result.completed_segments),
+                current_segment_index: None,
+                current_segment_downloaded_bytes: None,
+                current_segment_total_bytes: None,
                 downloaded_bytes: remux_result.output_bytes,
                 total_bytes: None,
                 message: Some("publishing mp4 to Downloads".to_owned()),
@@ -252,8 +275,12 @@ pub async fn start_download_command<R: Runtime>(
     );
 
     if let Ok(mut record) = progress_record.lock() {
+        let public_output_path = format!(
+            "{}/{}",
+            publish_result.relative_path, publish_result.display_name
+        );
         record.mark_done(
-            remux_result.output_path.clone(),
+            public_output_path.clone(),
             publish_result.content_uri.clone(),
             publish_result.output_bytes,
         );
@@ -262,6 +289,13 @@ pub async fn start_download_command<R: Runtime>(
     }
 
     let _ = app.emit("download:history-updated", job_record);
+    if let Err(error) = fs::remove_file(&remux_result.output_path) {
+        debug!(
+            ?error,
+            path = %remux_result.output_path,
+            "failed to remove private Streamkeep MP4 after publishing"
+        );
+    }
 
     let _ = app.emit(
         "download:progress",
@@ -271,6 +305,9 @@ pub async fn start_download_command<R: Runtime>(
                 status: DownloadStatus::Done,
                 completed_segments: segment_result.completed_segments,
                 total_segments: Some(segment_result.completed_segments),
+                current_segment_index: None,
+                current_segment_downloaded_bytes: None,
+                current_segment_total_bytes: None,
                 downloaded_bytes: publish_result.output_bytes,
                 total_bytes: Some(publish_result.output_bytes),
                 message: Some("saved mp4".to_owned()),
@@ -281,7 +318,10 @@ pub async fn start_download_command<R: Runtime>(
     Ok(StartDownloadResult {
         job_id,
         output_name,
-        output_path: remux_result.output_path,
+        output_path: format!(
+            "{}/{}",
+            publish_result.relative_path, publish_result.display_name
+        ),
         output_uri: publish_result.content_uri,
         media_playlist_url: segment_result.media_playlist_url,
         output_bytes: publish_result.output_bytes,
@@ -369,6 +409,9 @@ fn mark_job_failed<R: Runtime>(
                 status: DownloadStatus::Failed,
                 completed_segments: 0,
                 total_segments: None,
+                current_segment_index: None,
+                current_segment_downloaded_bytes: None,
+                current_segment_total_bytes: None,
                 downloaded_bytes: 0,
                 total_bytes: None,
                 message: Some(message),
@@ -468,5 +511,47 @@ fn ensure_mp4_extension(value: &str) -> String {
         value.to_owned()
     } else {
         format!("{value}.mp4")
+    }
+}
+
+struct DownloadKeepAlive<R: Runtime> {
+    app: AppHandle<R>,
+    active: bool,
+}
+
+impl<R: Runtime> DownloadKeepAlive<R> {
+    fn start(app: AppHandle<R>) -> Self {
+        let active = match app.streamkeep_capture().start_download_keep_alive() {
+            Ok(()) => {
+                debug!("started Streamkeep Android download keep-alive service");
+                true
+            }
+            Err(error) => {
+                warn!(
+                    ?error,
+                    "failed to start Streamkeep Android download keep-alive service"
+                );
+                false
+            }
+        };
+
+        Self { app, active }
+    }
+}
+
+impl<R: Runtime> Drop for DownloadKeepAlive<R> {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+
+        if let Err(error) = self.app.streamkeep_capture().stop_download_keep_alive() {
+            warn!(
+                ?error,
+                "failed to stop Streamkeep Android download keep-alive service"
+            );
+        } else {
+            debug!("stopped Streamkeep Android download keep-alive service");
+        }
     }
 }

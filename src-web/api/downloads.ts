@@ -37,6 +37,9 @@ export type DownloadProgressPayload = {
   status: DownloadStatus;
   completedSegments: number;
   totalSegments: number | null;
+  currentSegmentIndex?: number | null;
+  currentSegmentDownloadedBytes?: number | null;
+  currentSegmentTotalBytes?: number | null;
   downloadedBytes: number;
   totalBytes: number | null;
   message?: string | null;

@@ -22,6 +22,10 @@ export interface CaptureRequestPayload {
   confidence: CaptureConfidence;
 }
 
+export interface CaptureDownloadRequestPayload extends CaptureRequestPayload {
+  requestedFileNameStem: string;
+}
+
 const PLUGIN_NAME = 'streamkeep-capture';
 
 export function listenForCaptureRequest(
@@ -40,6 +44,16 @@ export function listenForMasterDetected(
   return addPluginListener<CaptureRequestPayload>(
     PLUGIN_NAME,
     'capture:master-detected',
+    callback
+  );
+}
+
+export function listenForCaptureDownloadRequested(
+  callback: (payload: CaptureDownloadRequestPayload) => void
+): Promise<PluginListener> {
+  return addPluginListener<CaptureDownloadRequestPayload>(
+    PLUGIN_NAME,
+    'capture:download-requested',
     callback
   );
 }

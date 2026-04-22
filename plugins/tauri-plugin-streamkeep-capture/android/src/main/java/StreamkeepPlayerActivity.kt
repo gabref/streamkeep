@@ -2,8 +2,10 @@ package app.streamkeep.capture
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -22,17 +24,24 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import app.tauri.plugin.JSObject
 import org.json.JSONArray
 import org.json.JSONObject
 
 class StreamkeepPlayerActivity : Activity() {
+  private lateinit var rootFrame: FrameLayout
   private lateinit var webView: WebView
   private lateinit var urlField: EditText
   private lateinit var titleView: TextView
   private lateinit var progress: ProgressBar
+  private lateinit var detectedPane: LinearLayout
+  private lateinit var detectedTitleView: TextView
+  private lateinit var detectedFileNameField: EditText
+  private var detectedPayload: JSObject? = null
   private var loading = false
   private var currentTitle: String? = null
   private var currentPageUrl: String? = null
@@ -72,6 +81,7 @@ class StreamkeepPlayerActivity : Activity() {
     val normalized = normalizeUrl(url)
     clearPageMetadata()
     currentPageUrl = normalized
+    persistLastUrl(normalized)
     urlField.setText(normalized)
     webView.loadUrl(normalized)
   }
@@ -102,7 +112,28 @@ class StreamkeepPlayerActivity : Activity() {
     canGoForward = webView.canGoForward()
   ).toJsObject()
 
+  fun showDetectedStream(payload: JSObject) {
+    runOnUiThread {
+      detectedPayload = payload
+      val title = firstNonBlank(payload.optString("titleSuggestion"), null)
+        ?: firstNonBlank(payload.optString("documentTitle"), null)
+        ?: firstNonBlank(payload.optString("pageTitle"), null)
+        ?: "Streamkeep capture"
+      detectedTitleView.text = title
+      detectedFileNameField.setText(sanitizeFileStem(title))
+      detectedPane.visibility = View.VISIBLE
+    }
+  }
+
   private fun createLayout(): View {
+    rootFrame = FrameLayout(this).apply {
+      setBackgroundColor(Color.rgb(15, 19, 20))
+      layoutParams = FrameLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT
+      )
+    }
+
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       setBackgroundColor(Color.rgb(15, 19, 20))
@@ -147,7 +178,7 @@ class StreamkeepPlayerActivity : Activity() {
       setSingleLine(true)
       setTextColor(Color.rgb(245, 247, 247))
       setHintTextColor(Color.rgb(170, 182, 185))
-      setBackgroundColor(Color.rgb(32, 40, 43))
+      background = roundedBackground(Color.rgb(16, 23, 25), Color.rgb(51, 65, 69))
       textSize = 14f
       hint = "https://"
       imeOptions = EditorInfo.IME_ACTION_GO
@@ -183,7 +214,18 @@ class StreamkeepPlayerActivity : Activity() {
       1f
     ))
 
-    return root
+    rootFrame.addView(root)
+    detectedPane = createDetectedPane()
+    rootFrame.addView(
+      detectedPane,
+      FrameLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+        Gravity.BOTTOM
+      )
+    )
+
+    return rootFrame
   }
 
   @SuppressLint("SetJavaScriptEnabled")
@@ -225,6 +267,7 @@ class StreamkeepPlayerActivity : Activity() {
         clearPageMetadata()
         if (url != null) {
           currentPageUrl = url
+          persistLastUrl(url)
           urlField.setText(url)
         }
         super.onPageStarted(view, url, favicon)
@@ -236,6 +279,7 @@ class StreamkeepPlayerActivity : Activity() {
         CookieManager.getInstance().flush()
         if (url != null) {
           currentPageUrl = url
+          persistLastUrl(url)
           urlField.setText(url)
         }
         refreshPageMetadata(view)
@@ -339,9 +383,81 @@ class StreamkeepPlayerActivity : Activity() {
   private fun toolbarButton(label: String, onClick: () -> Unit): Button {
     return Button(this).apply {
       text = label
+      isAllCaps = false
       minWidth = dp(48)
       minHeight = dp(46)
+      setTextColor(Color.rgb(245, 247, 247))
+      setTypeface(typeface, Typeface.BOLD)
+      textSize = 12f
+      background = roundedBackground(Color.rgb(32, 40, 43), Color.rgb(51, 65, 69))
       setOnClickListener { onClick() }
+    }
+  }
+
+  private fun createDetectedPane(): LinearLayout {
+    return LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      visibility = View.GONE
+      setPadding(dp(14), dp(12), dp(14), dp(14))
+      background = roundedBackground(Color.rgb(23, 29, 31), Color.rgb(70, 87, 92), dp(14).toFloat())
+      elevation = dp(10).toFloat()
+
+      addView(TextView(this@StreamkeepPlayerActivity).apply {
+        text = "Video detected"
+        setTextColor(Color.rgb(137, 223, 168))
+        setTypeface(typeface, Typeface.BOLD)
+        textSize = 12f
+      })
+
+      detectedTitleView = TextView(this@StreamkeepPlayerActivity).apply {
+        setTextColor(Color.rgb(245, 247, 247))
+        setTypeface(typeface, Typeface.BOLD)
+        textSize = 16f
+        maxLines = 2
+        setPadding(0, dp(4), 0, dp(10))
+      }
+      addView(detectedTitleView)
+
+      detectedFileNameField = EditText(this@StreamkeepPlayerActivity).apply {
+        setSingleLine(true)
+        setTextColor(Color.rgb(245, 247, 247))
+        setHintTextColor(Color.rgb(170, 182, 185))
+        background = roundedBackground(Color.rgb(16, 23, 25), Color.rgb(51, 65, 69))
+        hint = "File name"
+        textSize = 14f
+        setPadding(dp(10), 0, dp(10), 0)
+      }
+      addView(detectedFileNameField, LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        dp(46)
+      ))
+
+      val actions = LinearLayout(this@StreamkeepPlayerActivity).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(10), 0, 0)
+      }
+      actions.addView(toolbarButton("Not now") {
+        detectedPane.visibility = View.GONE
+      }, LinearLayout.LayoutParams(0, dp(44), 1f))
+      actions.addView(toolbarButton("Download MP4") {
+        val payload = detectedPayload ?: return@toolbarButton
+        StreamkeepPlayerRegistry.requestDownload(payload, detectedFileNameField.text.toString())
+        detectedPane.visibility = View.GONE
+      }, LinearLayout.LayoutParams(0, dp(44), 1.2f))
+      addView(actions)
+    }
+  }
+
+  private fun roundedBackground(
+    fillColor: Int,
+    strokeColor: Int,
+    radius: Float = dp(8).toFloat()
+  ): GradientDrawable {
+    return GradientDrawable().apply {
+      setColor(fillColor)
+      cornerRadius = radius
+      setStroke(dp(1), strokeColor)
     }
   }
 
@@ -353,6 +469,21 @@ class StreamkeepPlayerActivity : Activity() {
     return "https://${Uri.encode(trimmed)}"
   }
 
+  private fun sanitizeFileStem(value: String): String {
+    val cleaned = value
+      .replace(Regex("""[<>:"/\\|?*\u0000-\u001F]"""), " ")
+      .replace(Regex("""\s+"""), " ")
+      .trim('.', ' ')
+    return cleaned.ifBlank { "Streamkeep capture" }.removeSuffix(".mp4")
+  }
+
+  private fun persistLastUrl(value: String) {
+    getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+      .edit()
+      .putString(LAST_URL_KEY, value)
+      .apply()
+  }
+
   private fun dp(value: Int): Int {
     return (value * resources.displayMetrics.density).toInt()
   }
@@ -360,5 +491,14 @@ class StreamkeepPlayerActivity : Activity() {
   companion object {
     const val EXTRA_INITIAL_URL = "app.streamkeep.capture.initial_url"
     const val DEFAULT_URL = "https://example.com"
+    private const val PREFERENCES_NAME = "streamkeep-player"
+    private const val LAST_URL_KEY = "last-url"
+
+    fun lastUrl(context: Context): String {
+      return context
+        .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        .getString(LAST_URL_KEY, DEFAULT_URL)
+        ?: DEFAULT_URL
+    }
   }
 }
