@@ -6,6 +6,7 @@ import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 @InvokeArg
@@ -16,6 +17,12 @@ class OpenPlayerArgs {
 @InvokeArg
 class LoadUrlArgs {
   lateinit var url: String
+}
+
+@InvokeArg
+class RemuxToMp4Args {
+  lateinit var inputPath: String
+  lateinit var outputPath: String
 }
 
 @TauriPlugin
@@ -75,6 +82,21 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
     }
   }
 
+  @Command
+  fun remuxToMp4(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(RemuxToMp4Args::class.java)
+      val result = StreamkeepMp4Remuxer.remuxToMp4(args.inputPath, args.outputPath)
+      val payload = JSObject()
+      payload.put("outputPath", result.outputPath)
+      payload.put("trackCount", result.trackCount)
+      payload.put("outputBytes", result.outputBytes)
+      invoke.resolve(payload)
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "Failed to remux media to MP4")
+    }
+  }
+
   private fun normalizeUrl(value: String?): String {
     val trimmed = value?.trim().orEmpty()
     if (trimmed.isEmpty()) {
@@ -86,7 +108,7 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
     return "https://$trimmed"
   }
 
-  fun emitCaptureEvent(event: String, payload: app.tauri.plugin.JSObject) {
+  fun emitCaptureEvent(event: String, payload: JSObject) {
     trigger(event, payload)
   }
 }

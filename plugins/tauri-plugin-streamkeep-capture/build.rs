@@ -7,6 +7,7 @@ const COMMANDS: &[&str] = &[
     "goForward",
     "reload",
     "loadUrl",
+    "remuxToMp4",
 ];
 
 fn main() {

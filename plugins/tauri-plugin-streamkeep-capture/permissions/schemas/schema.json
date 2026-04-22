@@ -389,6 +389,18 @@
           "type": "string",
           "const": "deny-removeListener",
           "markdownDescription": "Denies the removeListener command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remuxToMp4 command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remuxToMp4",
+          "markdownDescription": "Enables the remuxToMp4 command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remuxToMp4 command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remuxToMp4",
+          "markdownDescription": "Denies the remuxToMp4 command without any pre-configured scope."
         }
       ]
     }

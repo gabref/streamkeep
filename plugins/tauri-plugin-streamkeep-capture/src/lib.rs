@@ -1,3 +1,5 @@
+#[cfg(mobile)]
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tauri::{
     Manager, Runtime,
@@ -32,6 +34,21 @@ pub struct PlayerState {
     pub title: Option<String>,
     pub can_go_back: bool,
     pub can_go_forward: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemuxToMp4Request {
+    pub input_path: String,
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemuxToMp4Result {
+    pub output_path: String,
+    pub track_count: u32,
+    pub output_bytes: u64,
 }
 
 #[cfg(not(mobile))]
@@ -107,6 +124,19 @@ impl<R: Runtime> StreamkeepCapture<R> {
         }
     }
 
+    pub fn remux_to_mp4(&self, request: RemuxToMp4Request) -> Result<RemuxToMp4Result, String> {
+        #[cfg(mobile)]
+        {
+            return self.run_mobile("remuxToMp4", request);
+        }
+
+        #[cfg(not(mobile))]
+        {
+            let _ = request;
+            Err("Streamkeep MP4 remuxing is available on Android".to_owned())
+        }
+    }
+
     fn run_empty_command(&self, command: &str) -> Result<PlayerState, String> {
         #[cfg(mobile)]
         {
@@ -121,7 +151,11 @@ impl<R: Runtime> StreamkeepCapture<R> {
     }
 
     #[cfg(mobile)]
-    fn run_mobile<T: Serialize>(&self, command: &str, payload: T) -> Result<PlayerState, String> {
+    fn run_mobile<T, O>(&self, command: &str, payload: T) -> Result<O, String>
+    where
+        T: Serialize,
+        O: DeserializeOwned,
+    {
         self.mobile_plugin_handle
             .run_mobile_plugin(command, payload)
             .map_err(|error| error.to_string())

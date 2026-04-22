@@ -214,4 +214,30 @@ Denies the removeListener command without any pre-configured scope.
 
 </td>
 </tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:allow-remuxToMp4`
+
+</td>
+<td>
+
+Enables the remuxToMp4 command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-remuxToMp4`
+
+</td>
+<td>
+
+Denies the remuxToMp4 command without any pre-configured scope.
+
+</td>
+</tr>
 </table>

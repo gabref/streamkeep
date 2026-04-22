@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "streamkeep-capture:allow-registerListener",
-    "streamkeep-capture:allow-removeListener"
+    "streamkeep-capture:allow-removeListener",
+    "streamkeep-capture:allow-remuxToMp4"
   ]
 }
