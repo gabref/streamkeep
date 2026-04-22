@@ -58,9 +58,16 @@
           Back
         </AppButton>
         <AppButton
+          v-if="job.outputUri"
+          icon="play"
+          variant="primary"
+          @click="openFile"
+        >
+          Open
+        </AppButton>
+        <AppButton
           v-if="job.status === 'failed'"
           icon="download"
-          variant="primary"
         >
           Retry
         </AppButton>
@@ -87,6 +94,7 @@ import { computed, onMounted } from 'vue';
 import AppButton from '@/app/components/AppButton.vue';
 import ProgressBar from '@/app/components/ProgressBar.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
+import { openDownload } from '@/api/downloads';
 import { useDownloadsStore, type DownloadJobStatus } from '@/stores/downloads';
 
 const props = defineProps<{
@@ -122,5 +130,13 @@ function formatBytes(value: number): string {
   }
 
   return `${Math.round(value / (1024 * 1024))} MB`;
+}
+
+async function openFile() {
+  if (!job.value?.outputUri) {
+    return;
+  }
+
+  await openDownload(job.value.outputUri);
 }
 </script>

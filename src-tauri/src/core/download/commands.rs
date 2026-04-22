@@ -11,7 +11,7 @@ use streamkeep_download_core::{
 use streamkeep_storage_core::{DownloadHistory, DownloadJobRecord, DownloadJobStatus};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_streamkeep_capture::{
-    PublishToDownloadsRequest, RemuxToMp4Request, StreamkeepCaptureExt,
+    OpenUriRequest, PublishToDownloadsRequest, RemuxToMp4Request, StreamkeepCaptureExt,
 };
 use tracing::{debug, error, info};
 
@@ -291,6 +291,18 @@ pub fn list_download_history_command<R: Runtime>(
         .join("downloads");
     let history = read_download_history(&history_file_path(&download_dir))?;
     Ok(history.jobs)
+}
+
+#[tauri::command]
+pub fn open_download_command<R: Runtime>(
+    app: AppHandle<R>,
+    content_uri: String,
+) -> Result<(), String> {
+    info!(content_uri = %content_uri, "opening published Streamkeep download");
+    app.streamkeep_capture().open_uri(OpenUriRequest {
+        content_uri,
+        mime_type: Some("video/mp4".to_owned()),
+    })
 }
 
 fn emit_download_progress<R: Runtime>(

@@ -67,6 +67,13 @@ pub struct PublishToDownloadsResult {
     pub output_bytes: u64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenUriRequest {
+    pub content_uri: String,
+    pub mime_type: Option<String>,
+}
+
 #[cfg(not(mobile))]
 impl PlayerState {
     fn unsupported() -> Self {
@@ -166,6 +173,19 @@ impl<R: Runtime> StreamkeepCapture<R> {
         {
             let _ = request;
             Err("Publishing Streamkeep downloads is available on Android".to_owned())
+        }
+    }
+
+    pub fn open_uri(&self, request: OpenUriRequest) -> Result<(), String> {
+        #[cfg(mobile)]
+        {
+            return self.run_mobile("openUri", request);
+        }
+
+        #[cfg(not(mobile))]
+        {
+            let _ = request;
+            Err("Opening Streamkeep downloads is available on Android".to_owned())
         }
     }
 

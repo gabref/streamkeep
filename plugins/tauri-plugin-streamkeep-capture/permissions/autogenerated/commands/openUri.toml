@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-openUri"
+description = "Enables the openUri command without any pre-configured scope."
+commands.allow = ["openUri"]
+
+[[permission]]
+identifier = "deny-openUri"
+description = "Denies the openUri command without any pre-configured scope."
+commands.deny = ["openUri"]

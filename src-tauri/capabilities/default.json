@@ -9,6 +9,7 @@
     "streamkeep-capture:allow-registerListener",
     "streamkeep-capture:allow-remove-listener",
     "streamkeep-capture:allow-removeListener",
+    "streamkeep-capture:allow-openUri",
     "streamkeep-capture:allow-publishToDownloads",
     "streamkeep-capture:allow-remuxToMp4"
   ]

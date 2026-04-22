@@ -68,6 +68,10 @@ export function listDownloadHistory(): Promise<DownloadJobRecord[]> {
   return invoke<DownloadJobRecord[]>('list_download_history_command');
 }
 
+export function openDownload(contentUri: string): Promise<void> {
+  return invoke('open_download_command', { contentUri });
+}
+
 export function listenForDownloadProgress(
   callback: (payload: DownloadProgressPayload) => void
 ): Promise<UnlistenFn> {

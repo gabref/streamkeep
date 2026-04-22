@@ -140,6 +140,32 @@ Denies the openPlayer command without any pre-configured scope.
 <tr>
 <td>
 
+`streamkeep-capture:allow-openUri`
+
+</td>
+<td>
+
+Enables the openUri command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-openUri`
+
+</td>
+<td>
+
+Denies the openUri command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `streamkeep-capture:allow-publishToDownloads`
 
 </td>

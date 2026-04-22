@@ -2,6 +2,7 @@ package app.streamkeep.capture
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -29,6 +30,12 @@ class RemuxToMp4Args {
 class PublishToDownloadsArgs {
   lateinit var inputPath: String
   lateinit var displayName: String
+}
+
+@InvokeArg
+class OpenUriArgs {
+  lateinit var contentUri: String
+  var mimeType: String? = null
 }
 
 @TauriPlugin
@@ -130,6 +137,21 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
       invoke.resolve(payload)
     } catch (ex: Exception) {
       invoke.reject(ex.message ?: "Failed to publish MP4 to Downloads")
+    }
+  }
+
+  @Command
+  fun openUri(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(OpenUriArgs::class.java)
+      val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(Uri.parse(args.contentUri), args.mimeType ?: "video/mp4")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      activity.startActivity(Intent.createChooser(intent, "Open with"))
+      invoke.resolve()
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "Failed to open published file")
     }
   }
 

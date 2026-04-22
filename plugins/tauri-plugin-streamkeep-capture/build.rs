@@ -11,6 +11,7 @@ const COMMANDS: &[&str] = &[
     "loadUrl",
     "remuxToMp4",
     "publishToDownloads",
+    "openUri",
 ];
 
 fn main() {
