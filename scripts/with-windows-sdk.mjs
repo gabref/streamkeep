@@ -18,11 +18,23 @@ if (process.platform === 'win32') {
     env.RC_X86_64_PC_WINDOWS_MSVC = join(rcDir, 'rc.exe');
     env.PATH = `${rcDir};${env.PATH ?? ''}`;
   }
+
+  if (env.JAVA_HOME) {
+    const javaBin = join(env.JAVA_HOME, 'bin');
+
+    if (existsSync(javaBin)) {
+      env.PATH = `${javaBin};${env.PATH ?? ''}`;
+    }
+  }
 }
 
-const child = spawn(command, args, {
+const executable = process.platform === 'win32' && command === 'tauri' ? 'pnpm' : command;
+const executableArgs =
+  process.platform === 'win32' && command === 'tauri' ? ['exec', 'tauri', ...args] : args;
+
+const child = spawn(executable, executableArgs, {
   env,
-  shell: process.platform === 'win32' && command === 'tauri',
+  shell: process.platform === 'win32' && executable === 'pnpm',
   stdio: 'inherit',
 });
 
