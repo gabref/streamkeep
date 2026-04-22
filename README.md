@@ -12,6 +12,8 @@ The MVP workflow is:
 6. save the result locally on the phone as MP4
 7. show progress and download history
 
+Saved MP4 files are published to the Android public Downloads collection under `Download/Streamkeep`.
+
 ## Development
 
 Install dependencies:
@@ -40,3 +42,18 @@ pnpm run dev:android
 
 Android is the primary target. Device tests must be performed on a real phone in debug mode.
 
+## Verification
+
+Run the local automated checks:
+
+```sh
+pnpm run format:check
+pnpm run lint:rust
+pnpm run type-check
+pnpm run eslint
+pnpm run test:unit
+pnpm run test:rust
+pnpm run build:android:apk
+```
+
+See `docs/testing-android.md` for the real-device smoke test checklist.

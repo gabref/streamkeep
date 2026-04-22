@@ -29,6 +29,7 @@
     "type-check:tests": "vue-tsc --noEmit --project tsconfig.test.json",
     "type-check:node": "vue-tsc --noEmit --project tsconfig.node.json",
     "format": "node scripts/with-windows-sdk.mjs cargo fmt --all",
+    "format:check": "node scripts/with-windows-sdk.mjs cargo fmt --all -- --check",
     "check": "run-p type-check lint test",
     "doctor": "node scripts/with-windows-sdk.mjs tauri info"
   },
