@@ -15,6 +15,9 @@ export type DownloadJob = {
   pageUrl: string;
   masterUrl: string;
   mediaPlaylistUrl?: string | null;
+  referer?: string | null;
+  userAgent?: string | null;
+  cookies?: string | null;
   status: DownloadJobStatus;
   progress: number;
   quality: string;
@@ -61,6 +64,12 @@ export const useDownloadsStore = defineStore('downloads', {
     upsertRecord(record: DownloadJobRecord): void {
       this.upsertJob(recordToJob(record));
     },
+    replaceRecords(records: DownloadJobRecord[]): void {
+      this.jobs = records.map(recordToJob);
+      this.loaded = true;
+      this.loadError = null;
+      this.sortJobs();
+    },
     applyProgress(progress: DownloadProgressPayload): void {
       const job = this.jobs.find((candidate) => candidate.id === progress.jobId);
       if (!job) {
@@ -101,6 +110,9 @@ function recordToJob(record: DownloadJobRecord): DownloadJob {
     pageUrl: record.pageUrl,
     masterUrl: record.masterUrl,
     mediaPlaylistUrl: record.mediaPlaylistUrl,
+    referer: record.referer,
+    userAgent: record.userAgent,
+    cookies: record.cookies,
     status: record.status,
     progress: record.progress,
     quality: record.quality,

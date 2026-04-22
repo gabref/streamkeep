@@ -8,12 +8,15 @@ use serde::{Deserialize, Serialize};
 use streamkeep_download_core::{
     DownloadProgress, DownloadRequest, DownloadStatus, download_segments_to_transport_stream,
 };
-use streamkeep_storage_core::{DownloadHistory, DownloadJobRecord, DownloadJobStatus};
+use streamkeep_storage_core::{
+    DownloadHistory, DownloadJobRecord, DownloadJobStatus, QueuedDownloadJob,
+};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_streamkeep_capture::{
     OpenUriRequest, PublishToDownloadsRequest, RemuxToMp4Request, StreamkeepCaptureExt,
 };
 use tracing::{debug, error, info};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +81,9 @@ pub async fn start_download_command<R: Runtime>(
         output_name = %output_name,
         "resolved download paths"
     );
+    let referer = request.referer.clone();
+    let user_agent = request.user_agent.clone();
+    let cookies = request.cookies.clone();
     let download_request = DownloadRequest {
         master_url: request.master_url,
         media_playlist_url: request.media_playlist_url,
@@ -97,17 +103,20 @@ pub async fn start_download_command<R: Runtime>(
                 .unwrap_or(&output_name)
                 .to_owned()
         });
-    let mut job_record = DownloadJobRecord::queued(
+    let mut job_record = DownloadJobRecord::queued(QueuedDownloadJob {
         title,
-        output_name.clone(),
-        request.page_url.unwrap_or_default(),
-        download_request.master_url.clone(),
-        download_request.media_playlist_url.clone(),
-        request
+        output_name: output_name.clone(),
+        page_url: request.page_url.unwrap_or_default(),
+        master_url: download_request.master_url.clone(),
+        media_playlist_url: download_request.media_playlist_url.clone(),
+        referer,
+        user_agent,
+        cookies,
+        quality: request
             .quality_label
             .filter(|quality| !quality.trim().is_empty())
             .unwrap_or_else(|| "Best available".to_owned()),
-    );
+    });
     let job_id = job_record.id.to_string();
     persist_job_record(&history_path, job_record.clone())?;
 
@@ -290,6 +299,25 @@ pub fn list_download_history_command<R: Runtime>(
         .map_err(|error| error.to_string())?
         .join("downloads");
     let history = read_download_history(&history_file_path(&download_dir))?;
+    Ok(history.jobs)
+}
+
+#[tauri::command]
+pub fn delete_download_history_command<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: String,
+) -> Result<Vec<DownloadJobRecord>, String> {
+    info!(job_id = %job_id, "deleting Streamkeep download history entry");
+    let id = Uuid::parse_str(&job_id).map_err(|error| error.to_string())?;
+    let download_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("downloads");
+    let history_path = history_file_path(&download_dir);
+    let mut history = read_download_history(&history_path)?;
+    history.remove(id);
+    write_download_history(&history_path, &history)?;
     Ok(history.jobs)
 }
 

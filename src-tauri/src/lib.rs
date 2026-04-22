@@ -27,6 +27,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             core::app::commands::get_health_command,
+            core::download::commands::delete_download_history_command,
             core::download::commands::list_download_history_command,
             core::download::commands::open_download_command,
             core::download::commands::start_download_command,

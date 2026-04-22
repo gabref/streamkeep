@@ -68,10 +68,25 @@
         <AppButton
           v-if="job.status === 'failed'"
           icon="download"
+          :disabled="isBusy"
+          @click="retryDownload"
         >
           Retry
         </AppButton>
+        <AppButton
+          icon="activity"
+          :disabled="isBusy"
+          @click="deleteHistory"
+        >
+          Delete history
+        </AppButton>
       </div>
+      <p
+        v-if="actionError"
+        class="muted"
+      >
+        {{ actionError }}
+      </p>
     </section>
 
     <section
@@ -90,11 +105,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { deleteDownloadHistory, openDownload, startDownload } from '@/api/downloads';
 import AppButton from '@/app/components/AppButton.vue';
 import ProgressBar from '@/app/components/ProgressBar.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
-import { openDownload } from '@/api/downloads';
 import { useDownloadsStore, type DownloadJobStatus } from '@/stores/downloads';
 
 const props = defineProps<{
@@ -102,7 +118,10 @@ const props = defineProps<{
 }>();
 
 const downloads = useDownloadsStore();
+const router = useRouter();
 const job = computed(() => downloads.findJob(props.jobId));
+const isBusy = ref(false);
+const actionError = ref<string | null>(null);
 
 onMounted(async () => {
   await downloads.loadHistory();
@@ -133,10 +152,54 @@ function formatBytes(value: number): string {
 }
 
 async function openFile() {
-  if (!job.value?.outputUri) {
+  const contentUri = job.value?.outputUri;
+  if (!contentUri) {
     return;
   }
 
-  await openDownload(job.value.outputUri);
+  await runAction(() => openDownload(contentUri));
+}
+
+async function retryDownload() {
+  if (!job.value) {
+    return;
+  }
+
+  const retryJob = job.value;
+  await runAction(async () => {
+    await startDownload({
+      masterUrl: retryJob.masterUrl,
+      mediaPlaylistUrl: retryJob.mediaPlaylistUrl,
+      referer: retryJob.referer,
+      userAgent: retryJob.userAgent,
+      cookies: retryJob.cookies,
+      outputName: retryJob.outputName,
+      title: retryJob.title,
+      pageUrl: retryJob.pageUrl,
+      qualityLabel: retryJob.quality,
+    });
+    await downloads.loadHistory();
+    await router.push('/downloads');
+  });
+}
+
+async function deleteHistory() {
+  await runAction(async () => {
+    const jobs = await deleteDownloadHistory(props.jobId);
+    downloads.replaceRecords(jobs);
+    await router.push('/downloads');
+  });
+}
+
+async function runAction(action: () => Promise<void>) {
+  isBusy.value = true;
+  actionError.value = null;
+  try {
+    await action();
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    isBusy.value = false;
+  }
 }
 </script>

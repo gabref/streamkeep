@@ -26,6 +26,9 @@ pub struct DownloadJobRecord {
     pub page_url: String,
     pub master_url: String,
     pub media_playlist_url: Option<String>,
+    pub referer: Option<String>,
+    pub user_agent: Option<String>,
+    pub cookies: Option<String>,
     pub quality: String,
     pub status: DownloadJobStatus,
     pub progress: u8,
@@ -37,25 +40,34 @@ pub struct DownloadJobRecord {
     pub error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedDownloadJob {
+    pub title: String,
+    pub output_name: String,
+    pub page_url: String,
+    pub master_url: String,
+    pub media_playlist_url: Option<String>,
+    pub referer: Option<String>,
+    pub user_agent: Option<String>,
+    pub cookies: Option<String>,
+    pub quality: String,
+}
+
 impl DownloadJobRecord {
-    pub fn queued(
-        title: impl Into<String>,
-        output_name: impl Into<String>,
-        page_url: impl Into<String>,
-        master_url: impl Into<String>,
-        media_playlist_url: Option<String>,
-        quality: impl Into<String>,
-    ) -> Self {
+    pub fn queued(input: QueuedDownloadJob) -> Self {
         let now = now_timestamp();
 
         Self {
             id: Uuid::new_v4(),
-            title: title.into(),
-            output_name: output_name.into(),
-            page_url: page_url.into(),
-            master_url: master_url.into(),
-            media_playlist_url,
-            quality: quality.into(),
+            title: input.title,
+            output_name: input.output_name,
+            page_url: input.page_url,
+            master_url: input.master_url,
+            media_playlist_url: input.media_playlist_url,
+            referer: input.referer,
+            user_agent: input.user_agent,
+            cookies: input.cookies,
+            quality: input.quality,
             status: DownloadJobStatus::Queued,
             progress: 0,
             created_at: now.clone(),
@@ -114,6 +126,10 @@ impl DownloadHistory {
         self.jobs
             .sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
     }
+
+    pub fn remove(&mut self, id: Uuid) {
+        self.jobs.retain(|job| job.id != id);
+    }
 }
 
 fn now_timestamp() -> String {
@@ -124,19 +140,22 @@ fn now_timestamp() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{DownloadHistory, DownloadJobRecord, DownloadJobStatus};
+    use super::{DownloadHistory, DownloadJobRecord, DownloadJobStatus, QueuedDownloadJob};
 
     #[test]
     fn upsert_replaces_existing_record() {
         let mut history = DownloadHistory::default();
-        let mut record = DownloadJobRecord::queued(
-            "Title",
-            "Title.mp4",
-            "https://example.test/watch",
-            "https://example.test/master.m3u8",
-            None,
-            "Best available",
-        );
+        let mut record = DownloadJobRecord::queued(QueuedDownloadJob {
+            title: "Title".to_owned(),
+            output_name: "Title.mp4".to_owned(),
+            page_url: "https://example.test/watch".to_owned(),
+            master_url: "https://example.test/master.m3u8".to_owned(),
+            media_playlist_url: None,
+            referer: None,
+            user_agent: None,
+            cookies: None,
+            quality: "Best available".to_owned(),
+        });
         let id = record.id;
 
         history.upsert(record.clone());

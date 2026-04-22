@@ -49,6 +49,9 @@ export type DownloadJobRecord = {
   pageUrl: string;
   masterUrl: string;
   mediaPlaylistUrl?: string | null;
+  referer?: string | null;
+  userAgent?: string | null;
+  cookies?: string | null;
   quality: string;
   status: DownloadStatus;
   progress: number;
@@ -66,6 +69,10 @@ export function startDownload(request: StartDownloadRequest): Promise<StartDownl
 
 export function listDownloadHistory(): Promise<DownloadJobRecord[]> {
   return invoke<DownloadJobRecord[]>('list_download_history_command');
+}
+
+export function deleteDownloadHistory(jobId: string): Promise<DownloadJobRecord[]> {
+  return invoke<DownloadJobRecord[]>('delete_download_history_command', { jobId });
 }
 
 export function openDownload(contentUri: string): Promise<void> {
