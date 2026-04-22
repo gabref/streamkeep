@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/*",
+  "plugins/*",
   "src-tauri",
 ]
 
@@ -29,4 +30,3 @@ panic = "unwind"
 incremental = true
 codegen-units = 256
 rpath = false
-

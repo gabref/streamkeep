@@ -3547,6 +3547,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-log",
  "tauri-plugin-os",
+ "tauri-plugin-streamkeep-capture",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3991,6 +3992,16 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "tauri-plugin-streamkeep-capture"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

@@ -1,0 +1,18 @@
+[package]
+name = "tauri-plugin-streamkeep-capture"
+version = "0.1.0"
+description = "Android capture and embedded player integration for Streamkeep"
+authors = ["Streamkeep"]
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+links = "tauri-plugin-streamkeep-capture"
+
+[build-dependencies]
+tauri-plugin = { version = "2.5.4", features = ["build"] }
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.10.3", features = [] }

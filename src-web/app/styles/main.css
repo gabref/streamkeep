@@ -431,6 +431,8 @@ dd {
 
 .metricTile strong {
   font-size: 1.4rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .browserFrame {

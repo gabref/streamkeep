@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-getPlayerState"
+description = "Enables the getPlayerState command without any pre-configured scope."
+commands.allow = ["getPlayerState"]
+
+[[permission]]
+identifier = "deny-getPlayerState"
+description = "Denies the getPlayerState command without any pre-configured scope."
+commands.deny = ["getPlayerState"]

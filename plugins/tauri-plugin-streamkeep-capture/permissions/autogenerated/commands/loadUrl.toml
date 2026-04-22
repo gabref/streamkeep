@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-loadUrl"
+description = "Enables the loadUrl command without any pre-configured scope."
+commands.allow = ["loadUrl"]
+
+[[permission]]
+identifier = "deny-loadUrl"
+description = "Denies the loadUrl command without any pre-configured scope."
+commands.deny = ["loadUrl"]

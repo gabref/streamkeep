@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-openPlayer"
+description = "Enables the openPlayer command without any pre-configured scope."
+commands.allow = ["openPlayer"]
+
+[[permission]]
+identifier = "deny-openPlayer"
+description = "Denies the openPlayer command without any pre-configured scope."
+commands.deny = ["openPlayer"]

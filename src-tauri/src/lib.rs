@@ -16,12 +16,19 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_streamkeep_capture::init())
         .setup(|_app| {
             info!("starting Streamkeep app");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            core::app::commands::get_health_command
+            core::app::commands::get_health_command,
+            core::player::commands::get_player_state_command,
+            core::player::commands::open_player_command,
+            core::player::commands::player_go_back_command,
+            core::player::commands::player_go_forward_command,
+            core::player::commands::player_reload_command,
+            core::player::commands::player_load_url_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running Streamkeep application");

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-goForward"
+description = "Enables the goForward command without any pre-configured scope."
+commands.allow = ["goForward"]
+
+[[permission]]
+identifier = "deny-goForward"
+description = "Denies the goForward command without any pre-configured scope."
+commands.deny = ["goForward"]
