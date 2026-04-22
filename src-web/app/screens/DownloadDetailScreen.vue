@@ -33,9 +33,13 @@
           <dt>Source</dt>
           <dd>{{ job.pageUrl }}</dd>
         </div>
-        <div v-if="job.outputUri">
+        <div v-if="job.outputPath">
           <dt>Output</dt>
-          <dd>{{ job.outputUri }}</dd>
+          <dd>{{ job.outputPath }}</dd>
+        </div>
+        <div v-if="job.outputBytes">
+          <dt>Size</dt>
+          <dd>{{ formatBytes(job.outputBytes) }}</dd>
         </div>
         <div v-if="job.errorMessage">
           <dt>Error</dt>
@@ -75,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import AppButton from '@/app/components/AppButton.vue';
 import ProgressBar from '@/app/components/ProgressBar.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
@@ -87,6 +91,10 @@ const props = defineProps<{
 
 const downloads = useDownloadsStore();
 const job = computed(() => downloads.findJob(props.jobId));
+
+onMounted(async () => {
+  await downloads.loadHistory();
+});
 
 function statusTone(status: DownloadJobStatus): 'default' | 'success' | 'warning' | 'danger' {
   if (status === 'done') {
@@ -103,5 +111,12 @@ function statusTone(status: DownloadJobStatus): 'default' | 'success' | 'warning
 
   return 'default';
 }
-</script>
 
+function formatBytes(value: number): string {
+  if (value < 1024 * 1024) {
+    return `${Math.round(value / 1024)} KB`;
+  }
+
+  return `${Math.round(value / (1024 * 1024))} MB`;
+}
+</script>

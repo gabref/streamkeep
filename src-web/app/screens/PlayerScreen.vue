@@ -126,6 +126,7 @@ import {
   type CaptureRequestPayload,
 } from '@/api/capture';
 import {
+  listenForDownloadHistoryUpdates,
   listenForDownloadProgress,
   startDownload,
   type DownloadProgressPayload,
@@ -144,6 +145,7 @@ import DetectionDialog from '@/app/components/DetectionDialog.vue';
 import IconGlyph from '@/app/components/IconGlyph.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
 import { useDetectionStore } from '@/stores/detection';
+import { useDownloadsStore } from '@/stores/downloads';
 
 const targetUrl = ref('https://example.com');
 const playerState = ref<PlayerState | null>(null);
@@ -155,6 +157,7 @@ const errorMessage = ref<string | null>(null);
 const isBusy = ref(false);
 const listenerCleanup = ref<Array<() => Promise<void>>>([]);
 const detection = useDetectionStore();
+const downloads = useDownloadsStore();
 
 const pendingStream = computed(() => detection.pendingStream);
 
@@ -254,9 +257,16 @@ onMounted(async () => {
   ];
   const downloadProgressListener = await listenForDownloadProgress((payload) => {
     activeDownloadProgress.value = payload;
+    downloads.applyProgress(payload);
   });
   listenerCleanup.value.push(async () => {
     downloadProgressListener();
+  });
+  const historyListener = await listenForDownloadHistoryUpdates((payload) => {
+    downloads.upsertRecord(payload);
+  });
+  listenerCleanup.value.push(async () => {
+    historyListener();
   });
   await runPlayerCommand(getPlayerState);
 });
@@ -268,6 +278,7 @@ onBeforeUnmount(() => {
 });
 
 async function openPlayerUrl() {
+  blurActiveElement();
   await runPlayerCommand(() => openPlayer(targetUrl.value));
 }
 
@@ -284,6 +295,7 @@ async function reloadPlayer() {
 }
 
 async function confirmDownload(fileNameStem: string, qualityId: string) {
+  blurActiveElement();
   const intent = detection.confirmDownload(fileNameStem, qualityId);
   if (!intent) {
     return;
@@ -292,6 +304,7 @@ async function confirmDownload(fileNameStem: string, qualityId: string) {
   isBusy.value = true;
   errorMessage.value = null;
   activeDownloadProgress.value = {
+    jobId: 'pending',
     status: 'queued',
     completedSegments: 0,
     totalSegments: null,
@@ -302,16 +315,25 @@ async function confirmDownload(fileNameStem: string, qualityId: string) {
 
   try {
     const selectedQuality = intent.stream.qualities.find((quality) => quality.id === qualityId);
+    const detectedMediaPlaylist =
+      lastRequest.value?.requestType === 'playlist' && /\.m3u8($|\?)/i.test(lastRequest.value.url)
+        ? lastRequest.value.url
+        : null;
     latestDownloadResult.value = await startDownload({
       masterUrl: intent.stream.masterUrl,
-      mediaPlaylistUrl: selectedQuality?.mediaPlaylistUrl ?? null,
+      mediaPlaylistUrl: selectedQuality?.mediaPlaylistUrl ?? detectedMediaPlaylist,
       referer: intent.stream.referer,
       userAgent: intent.stream.userAgent,
       cookies: intent.stream.cookies,
       outputName: intent.fileName,
+      title: intent.stream.titleSuggestion,
+      pageUrl: intent.stream.pageUrl,
+      qualityLabel: selectedQuality?.label ?? 'Best available',
     });
+    await downloads.loadHistory();
   } catch (error) {
     activeDownloadProgress.value = {
+      jobId: activeDownloadProgress.value?.jobId ?? 'pending',
       status: 'failed',
       completedSegments: activeDownloadProgress.value?.completedSegments ?? 0,
       totalSegments: activeDownloadProgress.value?.totalSegments ?? null,
@@ -345,5 +367,12 @@ function progressPercent(progress: DownloadProgressPayload): number | null {
     return Math.floor((Math.min(progress.completedSegments, progress.totalSegments) * 100) / progress.totalSegments);
   }
   return null;
+}
+
+function blurActiveElement() {
+  const activeElement = globalThis.document?.activeElement;
+  if (activeElement instanceof globalThis.HTMLElement) {
+    activeElement.blur();
+  }
 }
 </script>

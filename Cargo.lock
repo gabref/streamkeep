@@ -3863,6 +3863,7 @@ dependencies = [
  "serde_json",
  "streamkeep-app-core",
  "streamkeep-download-core",
+ "streamkeep-storage-core",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

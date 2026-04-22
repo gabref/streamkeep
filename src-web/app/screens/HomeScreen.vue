@@ -89,7 +89,8 @@ const health = ref<HealthSnapshot | null>(null);
 const downloads = useDownloadsStore();
 
 onMounted(async () => {
-  health.value = await getHealth();
+  const [healthSnapshot] = await Promise.all([getHealth(), downloads.loadHistory()]);
+  health.value = healthSnapshot;
 });
 
 function statusLabel(status: DownloadJobStatus): string {
@@ -112,4 +113,3 @@ function statusTone(status: DownloadJobStatus): 'default' | 'success' | 'warning
   return 'default';
 }
 </script>
-

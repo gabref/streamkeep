@@ -17,9 +17,13 @@ export type StartDownloadRequest = {
   userAgent?: string | null;
   cookies?: string | null;
   outputName: string;
+  title?: string | null;
+  pageUrl?: string | null;
+  qualityLabel?: string | null;
 };
 
 export type StartDownloadResult = {
+  jobId: string;
   outputName: string;
   outputPath: string;
   mediaPlaylistUrl: string;
@@ -28,6 +32,7 @@ export type StartDownloadResult = {
 };
 
 export type DownloadProgressPayload = {
+  jobId: string;
   status: DownloadStatus;
   completedSegments: number;
   totalSegments: number | null;
@@ -36,14 +41,43 @@ export type DownloadProgressPayload = {
   message?: string | null;
 };
 
+export type DownloadJobRecord = {
+  id: string;
+  title: string;
+  outputName: string;
+  pageUrl: string;
+  masterUrl: string;
+  mediaPlaylistUrl?: string | null;
+  quality: string;
+  status: DownloadStatus;
+  progress: number;
+  createdAt: string;
+  updatedAt: string;
+  outputPath?: string | null;
+  outputBytes?: number | null;
+  errorMessage?: string | null;
+};
+
 export function startDownload(request: StartDownloadRequest): Promise<StartDownloadResult> {
   return invoke<StartDownloadResult>('start_download_command', { request });
+}
+
+export function listDownloadHistory(): Promise<DownloadJobRecord[]> {
+  return invoke<DownloadJobRecord[]>('list_download_history_command');
 }
 
 export function listenForDownloadProgress(
   callback: (payload: DownloadProgressPayload) => void
 ): Promise<UnlistenFn> {
   return listen<DownloadProgressPayload>('download:progress', (event) => {
+    callback(event.payload);
+  });
+}
+
+export function listenForDownloadHistoryUpdates(
+  callback: (payload: DownloadJobRecord) => void
+): Promise<UnlistenFn> {
+  return listen<DownloadJobRecord>('download:history-updated', (event) => {
     callback(event.payload);
   });
 }

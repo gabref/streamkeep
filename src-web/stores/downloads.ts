@@ -1,70 +1,36 @@
 import { defineStore } from 'pinia';
+import {
+  listDownloadHistory,
+  type DownloadJobRecord,
+  type DownloadProgressPayload,
+  type DownloadStatus,
+} from '@/api/downloads';
 
-export type DownloadJobStatus =
-  | 'queued'
-  | 'preparing'
-  | 'downloading'
-  | 'remuxing'
-  | 'done'
-  | 'failed'
-  | 'cancelled';
+export type DownloadJobStatus = DownloadStatus;
 
 export type DownloadJob = {
   id: string;
   title: string;
   outputName: string;
   pageUrl: string;
+  masterUrl: string;
+  mediaPlaylistUrl?: string | null;
   status: DownloadJobStatus;
   progress: number;
   quality: string;
   createdAt: string;
   updatedAt: string;
-  errorMessage?: string;
-  outputUri?: string;
+  errorMessage?: string | null;
+  outputPath?: string | null;
+  outputBytes?: number | null;
 };
-
-const SAMPLE_JOBS: DownloadJob[] = [
-  {
-    id: 'sample-active',
-    title: 'Detected stream',
-    outputName: 'Detected stream.mp4',
-    pageUrl: 'https://stream.example/watch',
-    status: 'downloading',
-    progress: 42,
-    quality: 'Best available',
-    createdAt: '2026-04-22T12:10:00Z',
-    updatedAt: '2026-04-22T12:20:00Z',
-  },
-  {
-    id: 'sample-complete',
-    title: 'Saved capture',
-    outputName: 'Saved capture.mp4',
-    pageUrl: 'https://stream.example/library',
-    status: 'done',
-    progress: 100,
-    quality: '1080p',
-    createdAt: '2026-04-21T18:00:00Z',
-    updatedAt: '2026-04-21T18:35:00Z',
-    outputUri: 'content://downloads/streamkeep/Saved%20capture.mp4',
-  },
-  {
-    id: 'sample-failed',
-    title: 'Interrupted capture',
-    outputName: 'Interrupted capture.mp4',
-    pageUrl: 'https://stream.example/event',
-    status: 'failed',
-    progress: 12,
-    quality: '720p',
-    createdAt: '2026-04-20T20:00:00Z',
-    updatedAt: '2026-04-20T20:05:00Z',
-    errorMessage: 'Network request failed while downloading media segment 8.',
-  },
-];
 
 export const useDownloadsStore = defineStore('downloads', {
   state: () => {
     return {
-      jobs: SAMPLE_JOBS,
+      jobs: [] as DownloadJob[],
+      loaded: false,
+      loadError: null as string | null,
     };
   },
   getters: {
@@ -82,9 +48,75 @@ export const useDownloadsStore = defineStore('downloads', {
     },
   },
   actions: {
+    async loadHistory(): Promise<void> {
+      try {
+        this.jobs = (await listDownloadHistory()).map(recordToJob);
+        this.loaded = true;
+        this.loadError = null;
+      } catch (error) {
+        this.loadError = error instanceof Error ? error.message : String(error);
+      }
+    },
+    upsertRecord(record: DownloadJobRecord): void {
+      this.upsertJob(recordToJob(record));
+    },
+    applyProgress(progress: DownloadProgressPayload): void {
+      const job = this.jobs.find((candidate) => candidate.id === progress.jobId);
+      if (!job) {
+        return;
+      }
+
+      job.status = progress.status;
+      job.progress = progressPercent(progress) ?? job.progress;
+      job.updatedAt = new Date().toISOString();
+      if (progress.status === 'failed' && progress.message) {
+        job.errorMessage = progress.message;
+      }
+      this.sortJobs();
+    },
     findJob(jobId: string): DownloadJob | undefined {
       return this.jobs.find((job) => job.id === jobId);
+    },
+    upsertJob(job: DownloadJob): void {
+      const index = this.jobs.findIndex((candidate) => candidate.id === job.id);
+      if (index === -1) {
+        this.jobs.unshift(job);
+      } else {
+        this.jobs[index] = job;
+      }
+      this.sortJobs();
+    },
+    sortJobs(): void {
+      this.jobs.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
     },
   },
 });
 
+function recordToJob(record: DownloadJobRecord): DownloadJob {
+  return {
+    id: record.id,
+    title: record.title,
+    outputName: record.outputName,
+    pageUrl: record.pageUrl,
+    masterUrl: record.masterUrl,
+    mediaPlaylistUrl: record.mediaPlaylistUrl,
+    status: record.status,
+    progress: record.progress,
+    quality: record.quality,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    outputPath: record.outputPath,
+    outputBytes: record.outputBytes,
+    errorMessage: record.errorMessage,
+  };
+}
+
+function progressPercent(progress: DownloadProgressPayload): number | null {
+  if (progress.totalBytes && progress.totalBytes > 0) {
+    return Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes);
+  }
+  if (progress.totalSegments && progress.totalSegments > 0) {
+    return Math.floor((Math.min(progress.completedSegments, progress.totalSegments) * 100) / progress.totalSegments);
+  }
+  return null;
+}

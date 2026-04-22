@@ -34,7 +34,16 @@
 
     <section class="sectionBlock">
       <h2>Completed</h2>
-      <div class="listStack">
+      <p
+        v-if="!downloads.completedJobs.length"
+        class="muted"
+      >
+        No completed downloads yet.
+      </p>
+      <div
+        v-else
+        class="listStack"
+      >
         <RouterLink
           v-for="job in downloads.completedJobs"
           :key="job.id"
@@ -54,7 +63,16 @@
 
     <section class="sectionBlock">
       <h2>Failed</h2>
-      <div class="listStack">
+      <p
+        v-if="!downloads.failedJobs.length"
+        class="muted"
+      >
+        No failed downloads.
+      </p>
+      <div
+        v-else
+        class="listStack"
+      >
         <RouterLink
           v-for="job in downloads.failedJobs"
           :key="job.id"
@@ -75,11 +93,15 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import ProgressBar from '@/app/components/ProgressBar.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
 import { useDownloadsStore } from '@/stores/downloads';
 
 const downloads = useDownloadsStore();
-</script>
 
+onMounted(async () => {
+  await downloads.loadHistory();
+});
+</script>

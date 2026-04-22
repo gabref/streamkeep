@@ -20,6 +20,8 @@ log = "0.4"
 serde.workspace = true
 serde_json.workspace = true
 streamkeep-app-core = { path = "../crates/streamkeep-app-core" }
+streamkeep-download-core = { version = "0.1.0", path = "../crates/streamkeep-download-core" }
+streamkeep-storage-core = { version = "0.1.0", path = "../crates/streamkeep-storage-core" }
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-streamkeep-capture = { path = "../plugins/tauri-plugin-streamkeep-capture" }
 tauri-plugin-dialog = "2.7.0"
@@ -28,7 +30,6 @@ tauri-plugin-log = "2.8.0"
 tauri-plugin-os = "2.3.2"
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
-streamkeep-download-core = { version = "0.1.0", path = "../crates/streamkeep-download-core" }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"

@@ -79,7 +79,7 @@
           <AppButton
             icon="download"
             variant="primary"
-            @click="$emit('download', fileNameStem, selectedQuality)"
+            @click="emitDownload"
           >
             Download
           </AppButton>
@@ -99,7 +99,7 @@ const props = defineProps<{
   stream: DetectedStream;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   cancel: [];
   download: [fileNameStem: string, qualityId: string];
 }>();
@@ -116,4 +116,16 @@ watch(
     selectedQuality.value = stream.qualities[0]?.id ?? 'best-available';
   }
 );
+
+function emitDownload() {
+  blurActiveElement();
+  emit('download', fileNameStem.value, selectedQuality.value);
+}
+
+function blurActiveElement() {
+  const activeElement = globalThis.document?.activeElement;
+  if (activeElement instanceof globalThis.HTMLElement) {
+    activeElement.blur();
+  }
+}
 </script>
