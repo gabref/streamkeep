@@ -56,7 +56,11 @@
           v-model="targetUrl"
           aria-label="Player URL"
           class="field"
+          autocomplete="off"
+          autocapitalize="off"
           inputmode="url"
+          spellcheck="false"
+          type="url"
         >
         <AppButton
           icon="play"
@@ -78,11 +82,11 @@
       <div class="metricGrid">
         <div class="metricTile">
           <span>Status</span>
-          <strong>Idle</strong>
+          <strong>{{ detectionStatus }}</strong>
         </div>
         <div class="metricTile">
           <span>Last request</span>
-          <strong>None</strong>
+          <strong>{{ lastRequestLabel }}</strong>
         </div>
         <div class="metricTile">
           <span>Player</span>
@@ -98,7 +102,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+  listenForCaptureRequest,
+  listenForMasterDetected,
+  type CaptureRequestPayload,
+} from '@/api/capture';
 import {
   getPlayerState,
   openPlayer,
@@ -113,8 +122,11 @@ import StatusChip from '@/app/components/StatusChip.vue';
 
 const targetUrl = ref('https://example.com');
 const playerState = ref<PlayerState | null>(null);
+const lastRequest = ref<CaptureRequestPayload | null>(null);
+const lastDetectedMaster = ref<CaptureRequestPayload | null>(null);
 const errorMessage = ref<string | null>(null);
 const isBusy = ref(false);
+const listenerCleanup = ref<Array<() => Promise<void>>>([]);
 
 const playerStateLabel = computed(() => {
   if (!playerState.value) {
@@ -133,14 +145,48 @@ const playerMessage = computed(() => {
   if (errorMessage.value) {
     return errorMessage.value;
   }
+  if (lastDetectedMaster.value?.masterUrl) {
+    return lastDetectedMaster.value.masterUrl;
+  }
   if (playerState.value?.visible && playerState.value.url) {
     return playerState.value.url;
   }
   return 'Open the Android player to browse and sign in inside Streamkeep.';
 });
 
+const detectionStatus = computed(() => {
+  if (lastDetectedMaster.value) {
+    return 'Stream detected';
+  }
+  return 'Idle';
+});
+
+const lastRequestLabel = computed(() => {
+  if (!lastRequest.value) {
+    return 'None';
+  }
+  return `${lastRequest.value.requestType}: ${lastRequest.value.url}`;
+});
+
 onMounted(async () => {
+  const requestListener = await listenForCaptureRequest((payload) => {
+    lastRequest.value = payload;
+  });
+  const masterListener = await listenForMasterDetected((payload) => {
+    lastRequest.value = payload;
+    lastDetectedMaster.value = payload;
+  });
+  listenerCleanup.value = [
+    () => requestListener.unregister(),
+    () => masterListener.unregister(),
+  ];
   await runPlayerCommand(getPlayerState);
+});
+
+onBeforeUnmount(() => {
+  for (const cleanup of listenerCleanup.value) {
+    void cleanup();
+  }
 });
 
 async function openPlayerUrl() {

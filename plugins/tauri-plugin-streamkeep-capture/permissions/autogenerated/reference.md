@@ -140,6 +140,32 @@ Denies the openPlayer command without any pre-configured scope.
 <tr>
 <td>
 
+`streamkeep-capture:allow-registerListener`
+
+</td>
+<td>
+
+Enables the registerListener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-registerListener`
+
+</td>
+<td>
+
+Denies the registerListener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `streamkeep-capture:allow-reload`
 
 </td>
@@ -159,6 +185,32 @@ Enables the reload command without any pre-configured scope.
 <td>
 
 Denies the reload command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:allow-removeListener`
+
+</td>
+<td>
+
+Enables the removeListener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-removeListener`
+
+</td>
+<td>
+
+Denies the removeListener command without any pre-configured scope.
 
 </td>
 </tr>

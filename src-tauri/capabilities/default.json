@@ -3,6 +3,9 @@
   "identifier": "default",
   "description": "Default Streamkeep application permissions",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "streamkeep-capture:allow-registerListener",
+    "streamkeep-capture:allow-removeListener"
+  ]
 }
-

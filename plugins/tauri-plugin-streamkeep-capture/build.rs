@@ -1,4 +1,6 @@
 const COMMANDS: &[&str] = &[
+    "registerListener",
+    "removeListener",
     "openPlayer",
     "getPlayerState",
     "goBack",

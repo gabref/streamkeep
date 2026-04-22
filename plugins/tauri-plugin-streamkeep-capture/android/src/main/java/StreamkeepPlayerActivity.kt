@@ -5,6 +5,7 @@ import android.app.Activity
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
@@ -12,8 +13,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
+import android.webkit.ServiceWorkerClient
+import android.webkit.ServiceWorkerController
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -29,6 +33,8 @@ class StreamkeepPlayerActivity : Activity() {
   private lateinit var progress: ProgressBar
   private var loading = false
   private var currentTitle: String? = null
+  private var currentPageUrl: String? = null
+  private var currentUserAgent: String? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -59,6 +65,7 @@ class StreamkeepPlayerActivity : Activity() {
 
   fun loadUrl(url: String) {
     val normalized = normalizeUrl(url)
+    currentPageUrl = normalized
     urlField.setText(normalized)
     webView.loadUrl(normalized)
   }
@@ -187,6 +194,7 @@ class StreamkeepPlayerActivity : Activity() {
       builtInZoomControls = false
       displayZoomControls = false
       userAgentString = "$userAgentString Streamkeep/0.1"
+      currentUserAgent = userAgentString
     }
 
     webView.webViewClient = object : WebViewClient() {
@@ -197,10 +205,19 @@ class StreamkeepPlayerActivity : Activity() {
         return false
       }
 
+      override fun shouldInterceptRequest(
+        view: WebView,
+        request: WebResourceRequest
+      ): WebResourceResponse? {
+        StreamkeepPlayerRegistry.recordRequest(request, "webview", currentPageUrl, currentUserAgent)
+        return null
+      }
+
       override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
         loading = true
         progress.visibility = View.VISIBLE
         if (url != null) {
+          currentPageUrl = url
           urlField.setText(url)
         }
         super.onPageStarted(view, url, favicon)
@@ -211,6 +228,7 @@ class StreamkeepPlayerActivity : Activity() {
         progress.visibility = View.GONE
         CookieManager.getInstance().flush()
         if (url != null) {
+          currentPageUrl = url
           urlField.setText(url)
         }
         super.onPageFinished(view, url)
@@ -229,6 +247,17 @@ class StreamkeepPlayerActivity : Activity() {
         titleView.text = if (title.isNullOrBlank()) "Streamkeep Player" else "Streamkeep - $title"
         super.onReceivedTitle(view, title)
       }
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+      ServiceWorkerController.getInstance().setServiceWorkerClient(
+        object : ServiceWorkerClient() {
+          override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
+            StreamkeepPlayerRegistry.recordRequest(request, "service-worker", currentPageUrl, currentUserAgent)
+            return null
+          }
+        }
+      )
     }
   }
 

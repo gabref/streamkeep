@@ -1,0 +1,40 @@
+import { addPluginListener, type PluginListener } from '@tauri-apps/api/core';
+
+export type CaptureRequestType = 'master' | 'playlist' | 'segment';
+export type CaptureConfidence = 'strong' | 'candidate';
+
+export interface CaptureRequestPayload {
+  url: string;
+  requestUrl: string;
+  masterUrl: string | null;
+  pageUrl: string | null;
+  referer: string | null;
+  userAgent: string | null;
+  cookies: string | null;
+  detectedAt: string;
+  source: 'webview' | 'service-worker';
+  requestType: CaptureRequestType;
+  confidence: CaptureConfidence;
+}
+
+const PLUGIN_NAME = 'streamkeep-capture';
+
+export function listenForCaptureRequest(
+  callback: (payload: CaptureRequestPayload) => void
+): Promise<PluginListener> {
+  return addPluginListener<CaptureRequestPayload>(
+    PLUGIN_NAME,
+    'capture:request-seen',
+    callback
+  );
+}
+
+export function listenForMasterDetected(
+  callback: (payload: CaptureRequestPayload) => void
+): Promise<PluginListener> {
+  return addPluginListener<CaptureRequestPayload>(
+    PLUGIN_NAME,
+    'capture:master-detected',
+    callback
+  );
+}

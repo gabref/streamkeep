@@ -20,6 +20,10 @@ class LoadUrlArgs {
 
 @TauriPlugin
 class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity) {
+  init {
+    StreamkeepPlayerRegistry.attachPlugin(this)
+  }
+
   @Command
   fun openPlayer(invoke: Invoke) {
     try {
@@ -80,5 +84,9 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
       return trimmed
     }
     return "https://$trimmed"
+  }
+
+  fun emitCaptureEvent(event: String, payload: app.tauri.plugin.JSObject) {
+    trigger(event, payload)
   }
 }
