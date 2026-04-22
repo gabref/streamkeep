@@ -5,7 +5,9 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "streamkeep-capture:allow-register-listener",
     "streamkeep-capture:allow-registerListener",
+    "streamkeep-capture:allow-remove-listener",
     "streamkeep-capture:allow-removeListener",
     "streamkeep-capture:allow-remuxToMp4"
   ]

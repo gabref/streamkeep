@@ -32,6 +32,16 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   }
 
   @Command
+  fun register_listener(invoke: Invoke) {
+    registerListener(invoke)
+  }
+
+  @Command
+  fun remove_listener(invoke: Invoke) {
+    removeListener(invoke)
+  }
+
+  @Command
   fun openPlayer(invoke: Invoke) {
     try {
       val args = invoke.parseArgs(OpenPlayerArgs::class.java)
