@@ -1,0 +1,175 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter,
+    "Segoe UI Variable",
+    "Segoe UI",
+    ui-sans-serif,
+    system-ui,
+    sans-serif;
+  --color-bg: #101316;
+  --color-surface: #181f24;
+  --color-surface-strong: #202930;
+  --color-border: #33414b;
+  --color-accent: #77d4c7;
+  --color-accent-strong: #aee7a2;
+  --color-text: #f5f7f7;
+  --color-muted: #aab5b8;
+  --color-warning: #e9c16d;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.homeScreen {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.homeScreen__summary,
+.statusPanel {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.homeScreen__summary {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.homeScreen__eyebrow,
+.statusPanel__label {
+  margin: 0;
+  color: var(--color-warning);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 2.4rem;
+  line-height: 1.08;
+}
+
+h2 {
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.homeScreen__body {
+  max-width: 680px;
+  color: var(--color-muted);
+  line-height: 1.58;
+}
+
+.homeScreen__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.button {
+  min-height: 48px;
+  padding: 0 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.button--primary {
+  border-color: transparent;
+  background: var(--color-accent);
+  color: #06110f;
+  font-weight: 700;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.statusPanel {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.statusPanel__list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.statusPanel__list div {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.34fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+dt {
+  color: var(--color-muted);
+}
+
+dd {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .homeScreen {
+    align-content: start;
+    padding: 16px;
+  }
+
+  .homeScreen__summary,
+  .statusPanel {
+    padding: 18px;
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
+}
+

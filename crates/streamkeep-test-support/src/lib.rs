@@ -1,0 +1,7 @@
+#![forbid(unsafe_code)]
+
+pub const SAMPLE_MASTER_PLAYLIST: &str = r#"#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=2400000,RESOLUTION=1280x720
+video/720p.m3u8
+"#;
