@@ -11,6 +11,11 @@ export interface CaptureRequestPayload {
   referer: string | null;
   userAgent: string | null;
   cookies: string | null;
+  pageTitle: string | null;
+  documentTitle: string | null;
+  openGraphTitle: string | null;
+  headingTitle: string | null;
+  titleSuggestion: string | null;
   detectedAt: string;
   source: 'webview' | 'service-worker';
   requestType: CaptureRequestType;

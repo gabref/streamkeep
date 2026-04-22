@@ -61,7 +61,10 @@ object StreamkeepPlayerRegistry {
     request: WebResourceRequest,
     source: String,
     pageUrl: String?,
-    fallbackUserAgent: String?
+    fallbackUserAgent: String?,
+    pageTitle: String?,
+    openGraphTitle: String?,
+    headingTitle: String?
   ) {
     val url = request.url?.toString() ?: return
     val requestType = classifyRequest(url) ?: return
@@ -73,7 +76,17 @@ object StreamkeepPlayerRegistry {
     }
     seenRequests[debounceKey] = now
 
-    val payload = createPayload(request, requestType, source, pageUrl, fallbackUserAgent, now)
+    val payload = createPayload(
+      request,
+      requestType,
+      source,
+      pageUrl,
+      fallbackUserAgent,
+      pageTitle,
+      openGraphTitle,
+      headingTitle,
+      now
+    )
     val plugin = pluginRef?.get() ?: return
     plugin.emitCaptureEvent(REQUEST_SEEN_EVENT, payload)
 
@@ -143,6 +156,9 @@ object StreamkeepPlayerRegistry {
     source: String,
     pageUrl: String?,
     fallbackUserAgent: String?,
+    pageTitle: String?,
+    openGraphTitle: String?,
+    headingTitle: String?,
     detectedAtMillis: Long
   ): JSObject {
     val url = request.url.toString()
@@ -158,6 +174,11 @@ object StreamkeepPlayerRegistry {
     payload.put("referer", referer)
     payload.put("userAgent", userAgent)
     payload.put("cookies", cookies)
+    payload.put("pageTitle", cleanTitle(pageTitle))
+    payload.put("documentTitle", cleanTitle(pageTitle))
+    payload.put("openGraphTitle", cleanTitle(openGraphTitle))
+    payload.put("headingTitle", cleanTitle(headingTitle))
+    payload.put("titleSuggestion", firstPresent(pageTitle, openGraphTitle, headingTitle))
     payload.put("detectedAt", formatDetectedAt(detectedAtMillis))
     payload.put("source", source)
     payload.put("requestType", requestType)
@@ -169,6 +190,18 @@ object StreamkeepPlayerRegistry {
     return headers.entries.firstOrNull { entry ->
       entry.key.equals(name, ignoreCase = true)
     }?.value
+  }
+
+  private fun firstPresent(vararg values: String?): String? {
+    return values.firstNotNullOfOrNull { cleanTitle(it) }
+  }
+
+  private fun cleanTitle(value: String?): String? {
+    val title = value?.trim()?.replace(Regex("\\s+"), " ")
+    if (title.isNullOrBlank()) {
+      return null
+    }
+    return title
   }
 
   private fun formatDetectedAt(value: Long): String {

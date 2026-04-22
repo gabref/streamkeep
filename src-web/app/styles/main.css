@@ -478,6 +478,64 @@ dd {
   color: var(--color-text);
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: end center;
+  padding: 18px;
+  background: rgb(4 7 8 / 72%);
+}
+
+.confirmSheet {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 560px);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.confirmSheet__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.suggestedTitle {
+  overflow-wrap: anywhere;
+}
+
+.fileNameControl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #101719;
+}
+
+.fileNameControl .field {
+  border: 0;
+  border-radius: 0;
+}
+
+.fileNameControl__suffix {
+  display: inline-grid;
+  place-items: center;
+  min-width: 64px;
+  padding: 0 12px;
+  border-left: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
 .toggleRow {
   display: flex;
   align-items: center;

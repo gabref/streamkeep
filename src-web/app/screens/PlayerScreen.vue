@@ -7,7 +7,9 @@
         </p>
         <h1>Player</h1>
       </div>
-      <StatusChip>Listening idle</StatusChip>
+      <StatusChip :tone="detectionTone">
+        {{ detectionStatus }}
+      </StatusChip>
     </div>
 
     <section class="toolBand">
@@ -96,8 +98,19 @@
           <span>Current page</span>
           <strong>{{ playerState?.title ?? 'None' }}</strong>
         </div>
+        <div class="metricTile">
+          <span>Selected file</span>
+          <strong>{{ confirmedFileLabel }}</strong>
+        </div>
       </div>
     </section>
+
+    <DetectionDialog
+      v-if="pendingStream"
+      :stream="pendingStream"
+      @cancel="detection.dismissPending"
+      @download="confirmDownload"
+    />
   </section>
 </template>
 
@@ -117,8 +130,10 @@ import {
   type PlayerState,
 } from '@/api/player';
 import AppButton from '@/app/components/AppButton.vue';
+import DetectionDialog from '@/app/components/DetectionDialog.vue';
 import IconGlyph from '@/app/components/IconGlyph.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
+import { useDetectionStore } from '@/stores/detection';
 
 const targetUrl = ref('https://example.com');
 const playerState = ref<PlayerState | null>(null);
@@ -127,6 +142,9 @@ const lastDetectedMaster = ref<CaptureRequestPayload | null>(null);
 const errorMessage = ref<string | null>(null);
 const isBusy = ref(false);
 const listenerCleanup = ref<Array<() => Promise<void>>>([]);
+const detection = useDetectionStore();
+
+const pendingStream = computed(() => detection.pendingStream);
 
 const playerStateLabel = computed(() => {
   if (!playerState.value) {
@@ -145,6 +163,9 @@ const playerMessage = computed(() => {
   if (errorMessage.value) {
     return errorMessage.value;
   }
+  if (detection.confirmedIntent) {
+    return `Ready to download ${detection.confirmedIntent.fileName}`;
+  }
   if (lastDetectedMaster.value?.masterUrl) {
     return lastDetectedMaster.value.masterUrl;
   }
@@ -155,10 +176,20 @@ const playerMessage = computed(() => {
 });
 
 const detectionStatus = computed(() => {
+  if (pendingStream.value) {
+    return 'Confirm download';
+  }
   if (lastDetectedMaster.value) {
     return 'Stream detected';
   }
   return 'Idle';
+});
+
+const detectionTone = computed<'default' | 'success'>(() => {
+  if (pendingStream.value || lastDetectedMaster.value) {
+    return 'success';
+  }
+  return 'default';
 });
 
 const lastRequestLabel = computed(() => {
@@ -168,6 +199,10 @@ const lastRequestLabel = computed(() => {
   return `${lastRequest.value.requestType}: ${lastRequest.value.url}`;
 });
 
+const confirmedFileLabel = computed(() => {
+  return detection.confirmedIntent?.fileName ?? 'None';
+});
+
 onMounted(async () => {
   const requestListener = await listenForCaptureRequest((payload) => {
     lastRequest.value = payload;
@@ -175,6 +210,7 @@ onMounted(async () => {
   const masterListener = await listenForMasterDetected((payload) => {
     lastRequest.value = payload;
     lastDetectedMaster.value = payload;
+    detection.registerDetectedPayload(payload);
   });
   listenerCleanup.value = [
     () => requestListener.unregister(),
@@ -203,6 +239,10 @@ async function goForward() {
 
 async function reloadPlayer() {
   return playerReload();
+}
+
+function confirmDownload(fileNameStem: string, qualityId: string) {
+  detection.confirmDownload(fileNameStem, qualityId);
 }
 
 async function runPlayerCommand(command: () => Promise<PlayerState>) {

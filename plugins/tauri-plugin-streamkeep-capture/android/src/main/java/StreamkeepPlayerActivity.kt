@@ -25,6 +25,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import org.json.JSONArray
+import org.json.JSONObject
 
 class StreamkeepPlayerActivity : Activity() {
   private lateinit var webView: WebView
@@ -35,6 +37,9 @@ class StreamkeepPlayerActivity : Activity() {
   private var currentTitle: String? = null
   private var currentPageUrl: String? = null
   private var currentUserAgent: String? = null
+  private var currentDocumentTitle: String? = null
+  private var currentOpenGraphTitle: String? = null
+  private var currentHeadingTitle: String? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -65,6 +70,7 @@ class StreamkeepPlayerActivity : Activity() {
 
   fun loadUrl(url: String) {
     val normalized = normalizeUrl(url)
+    clearPageMetadata()
     currentPageUrl = normalized
     urlField.setText(normalized)
     webView.loadUrl(normalized)
@@ -209,13 +215,14 @@ class StreamkeepPlayerActivity : Activity() {
         view: WebView,
         request: WebResourceRequest
       ): WebResourceResponse? {
-        StreamkeepPlayerRegistry.recordRequest(request, "webview", currentPageUrl, currentUserAgent)
+        recordRequest(request, "webview")
         return null
       }
 
       override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
         loading = true
         progress.visibility = View.VISIBLE
+        clearPageMetadata()
         if (url != null) {
           currentPageUrl = url
           urlField.setText(url)
@@ -231,6 +238,7 @@ class StreamkeepPlayerActivity : Activity() {
           currentPageUrl = url
           urlField.setText(url)
         }
+        refreshPageMetadata(view)
         super.onPageFinished(view, url)
       }
     }
@@ -244,6 +252,7 @@ class StreamkeepPlayerActivity : Activity() {
 
       override fun onReceivedTitle(view: WebView, title: String?) {
         currentTitle = title
+        currentDocumentTitle = title
         titleView.text = if (title.isNullOrBlank()) "Streamkeep Player" else "Streamkeep - $title"
         super.onReceivedTitle(view, title)
       }
@@ -253,12 +262,78 @@ class StreamkeepPlayerActivity : Activity() {
       ServiceWorkerController.getInstance().setServiceWorkerClient(
         object : ServiceWorkerClient() {
           override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
-            StreamkeepPlayerRegistry.recordRequest(request, "service-worker", currentPageUrl, currentUserAgent)
+            recordRequest(request, "service-worker")
             return null
           }
         }
       )
     }
+  }
+
+  private fun recordRequest(request: WebResourceRequest, source: String) {
+    StreamkeepPlayerRegistry.recordRequest(
+      request,
+      source,
+      currentPageUrl,
+      currentUserAgent,
+      currentDocumentTitle ?: currentTitle,
+      currentOpenGraphTitle,
+      currentHeadingTitle
+    )
+  }
+
+  private fun clearPageMetadata() {
+    currentTitle = null
+    currentDocumentTitle = null
+    currentOpenGraphTitle = null
+    currentHeadingTitle = null
+  }
+
+  private fun refreshPageMetadata(view: WebView) {
+    val script = """
+      (function () {
+        var og = document.querySelector('meta[property="og:title"], meta[name="og:title"]');
+        var heading = document.querySelector('h1, h2, [data-title], [aria-label]');
+        return JSON.stringify({
+          title: document.title || '',
+          openGraphTitle: og && og.content ? og.content : '',
+          headingTitle: heading ? (heading.textContent || heading.getAttribute('aria-label') || '') : ''
+        });
+      })();
+    """.trimIndent()
+
+    view.evaluateJavascript(script) { rawValue ->
+      val jsonText = decodeJavascriptString(rawValue)
+      if (jsonText.isNullOrBlank()) {
+        return@evaluateJavascript
+      }
+      try {
+        val metadata = JSONObject(jsonText)
+        currentDocumentTitle = firstNonBlank(metadata.optString("title"), currentDocumentTitle)
+        currentOpenGraphTitle = firstNonBlank(metadata.optString("openGraphTitle"), currentOpenGraphTitle)
+        currentHeadingTitle = firstNonBlank(metadata.optString("headingTitle"), currentHeadingTitle)
+      } catch (_: Exception) {
+      }
+    }
+  }
+
+  private fun decodeJavascriptString(rawValue: String?): String? {
+    if (rawValue == null || rawValue == "null") {
+      return null
+    }
+    return try {
+      JSONArray("[$rawValue]").optString(0)
+    } catch (_: Exception) {
+      rawValue.trim('"')
+    }
+  }
+
+  private fun firstNonBlank(value: String?, fallback: String?): String? {
+    val trimmed = value?.trim()
+    if (!trimmed.isNullOrBlank()) {
+      return trimmed
+    }
+    return fallback
   }
 
   private fun toolbarButton(label: String, onClick: () -> Unit): Button {
