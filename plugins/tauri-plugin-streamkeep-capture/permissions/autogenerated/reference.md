@@ -140,6 +140,32 @@ Denies the openPlayer command without any pre-configured scope.
 <tr>
 <td>
 
+`streamkeep-capture:allow-publishToDownloads`
+
+</td>
+<td>
+
+Enables the publishToDownloads command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-publishToDownloads`
+
+</td>
+<td>
+
+Denies the publishToDownloads command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `streamkeep-capture:allow-registerListener`
 
 </td>

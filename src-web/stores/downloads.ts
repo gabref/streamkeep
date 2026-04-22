@@ -22,6 +22,7 @@ export type DownloadJob = {
   updatedAt: string;
   errorMessage?: string | null;
   outputPath?: string | null;
+  outputUri?: string | null;
   outputBytes?: number | null;
 };
 
@@ -106,6 +107,7 @@ function recordToJob(record: DownloadJobRecord): DownloadJob {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     outputPath: record.outputPath,
+    outputUri: record.outputUri,
     outputBytes: record.outputBytes,
     errorMessage: record.errorMessage,
   };

@@ -98,10 +98,12 @@ import { RouterLink } from 'vue-router';
 import ProgressBar from '@/app/components/ProgressBar.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
 import { useDownloadsStore } from '@/stores/downloads';
+import { clearActiveTextInteraction } from '@/utils/dom';
 
 const downloads = useDownloadsStore();
 
 onMounted(async () => {
+  clearActiveTextInteraction();
   await downloads.loadHistory();
 });
 </script>

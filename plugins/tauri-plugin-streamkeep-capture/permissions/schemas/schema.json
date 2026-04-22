@@ -355,6 +355,18 @@
           "markdownDescription": "Denies the openPlayer command without any pre-configured scope."
         },
         {
+          "description": "Enables the publishToDownloads command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-publishToDownloads",
+          "markdownDescription": "Enables the publishToDownloads command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the publishToDownloads command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-publishToDownloads",
+          "markdownDescription": "Denies the publishToDownloads command without any pre-configured scope."
+        },
+        {
           "description": "Enables the registerListener command without any pre-configured scope.",
           "type": "string",
           "const": "allow-registerListener",

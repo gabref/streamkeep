@@ -26,6 +26,7 @@ export type StartDownloadResult = {
   jobId: string;
   outputName: string;
   outputPath: string;
+  outputUri: string;
   mediaPlaylistUrl: string;
   outputBytes: number;
   trackCount: number;
@@ -54,6 +55,7 @@ export type DownloadJobRecord = {
   createdAt: string;
   updatedAt: string;
   outputPath?: string | null;
+  outputUri?: string | null;
   outputBytes?: number | null;
   errorMessage?: string | null;
 };

@@ -25,6 +25,12 @@ class RemuxToMp4Args {
   lateinit var outputPath: String
 }
 
+@InvokeArg
+class PublishToDownloadsArgs {
+  lateinit var inputPath: String
+  lateinit var displayName: String
+}
+
 @TauriPlugin
 class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity) {
   init {
@@ -104,6 +110,26 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
       invoke.resolve(payload)
     } catch (ex: Exception) {
       invoke.reject(ex.message ?: "Failed to remux media to MP4")
+    }
+  }
+
+  @Command
+  fun publishToDownloads(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(PublishToDownloadsArgs::class.java)
+      val result = StreamkeepMediaStorePublisher.publishToDownloads(
+        activity = activity,
+        inputPath = args.inputPath,
+        displayName = args.displayName
+      )
+      val payload = JSObject()
+      payload.put("contentUri", result.contentUri)
+      payload.put("displayName", result.displayName)
+      payload.put("relativePath", result.relativePath)
+      payload.put("outputBytes", result.outputBytes)
+      invoke.resolve(payload)
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "Failed to publish MP4 to Downloads")
     }
   }
 

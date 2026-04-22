@@ -32,6 +32,7 @@ pub struct DownloadJobRecord {
     pub created_at: String,
     pub updated_at: String,
     pub output_path: Option<String>,
+    pub output_uri: Option<String>,
     pub output_bytes: Option<u64>,
     pub error_message: Option<String>,
 }
@@ -60,6 +61,7 @@ impl DownloadJobRecord {
             created_at: now.clone(),
             updated_at: now,
             output_path: None,
+            output_uri: None,
             output_bytes: None,
             error_message: None,
         }
@@ -73,10 +75,16 @@ impl DownloadJobRecord {
         self.updated_at = now_timestamp();
     }
 
-    pub fn mark_done(&mut self, output_path: impl Into<String>, output_bytes: u64) {
+    pub fn mark_done(
+        &mut self,
+        output_path: impl Into<String>,
+        output_uri: impl Into<String>,
+        output_bytes: u64,
+    ) {
         self.status = DownloadJobStatus::Done;
         self.progress = 100;
         self.output_path = Some(output_path.into());
+        self.output_uri = Some(output_uri.into());
         self.output_bytes = Some(output_bytes);
         self.error_message = None;
         self.updated_at = now_timestamp();

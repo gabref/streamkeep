@@ -10,7 +10,9 @@ use streamkeep_download_core::{
 };
 use streamkeep_storage_core::{DownloadHistory, DownloadJobRecord, DownloadJobStatus};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
-use tauri_plugin_streamkeep_capture::{RemuxToMp4Request, StreamkeepCaptureExt};
+use tauri_plugin_streamkeep_capture::{
+    PublishToDownloadsRequest, RemuxToMp4Request, StreamkeepCaptureExt,
+};
 use tracing::{debug, error, info};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -33,6 +35,7 @@ pub struct StartDownloadResult {
     pub job_id: String,
     pub output_name: String,
     pub output_path: String,
+    pub output_uri: String,
     pub media_playlist_url: String,
     pub output_bytes: u64,
     pub track_count: u32,
@@ -190,14 +193,61 @@ pub async fn start_download_command<R: Runtime>(
 
     let _ = fs::remove_file(&transport_path);
     info!(
+        input_path = %remux_result.output_path,
+        output_name = %output_name,
+        "publishing Streamkeep MP4 to Android Downloads"
+    );
+    let _ = app.emit(
+        "download:progress",
+        DownloadProgressEvent {
+            job_id: job_id.clone(),
+            progress: DownloadProgress {
+                status: DownloadStatus::Remuxing,
+                completed_segments: segment_result.completed_segments,
+                total_segments: Some(segment_result.completed_segments),
+                downloaded_bytes: remux_result.output_bytes,
+                total_bytes: None,
+                message: Some("publishing mp4 to Downloads".to_owned()),
+            },
+        },
+    );
+
+    let publish_result =
+        match app
+            .streamkeep_capture()
+            .publish_to_downloads(PublishToDownloadsRequest {
+                input_path: remux_result.output_path.clone(),
+                display_name: output_name.clone(),
+            }) {
+            Ok(result) => result,
+            Err(error) => {
+                error!(?error, "failed to publish MP4 to Android Downloads");
+                mark_job_failed(
+                    &app,
+                    &history_path,
+                    &progress_record,
+                    &job_id,
+                    &transport_path,
+                    error.clone(),
+                );
+                return Err(error);
+            }
+        };
+
+    info!(
         output_path = %remux_result.output_path,
-        output_bytes = remux_result.output_bytes,
+        output_uri = %publish_result.content_uri,
+        output_bytes = publish_result.output_bytes,
         track_count = remux_result.track_count,
-        "saved Streamkeep MP4"
+        "saved Streamkeep MP4 to public Downloads"
     );
 
     if let Ok(mut record) = progress_record.lock() {
-        record.mark_done(remux_result.output_path.clone(), remux_result.output_bytes);
+        record.mark_done(
+            remux_result.output_path.clone(),
+            publish_result.content_uri.clone(),
+            publish_result.output_bytes,
+        );
         job_record = record.clone();
         persist_job_record(&history_path, job_record.clone())?;
     }
@@ -212,8 +262,8 @@ pub async fn start_download_command<R: Runtime>(
                 status: DownloadStatus::Done,
                 completed_segments: segment_result.completed_segments,
                 total_segments: Some(segment_result.completed_segments),
-                downloaded_bytes: remux_result.output_bytes,
-                total_bytes: Some(remux_result.output_bytes),
+                downloaded_bytes: publish_result.output_bytes,
+                total_bytes: Some(publish_result.output_bytes),
                 message: Some("saved mp4".to_owned()),
             },
         },
@@ -223,8 +273,9 @@ pub async fn start_download_command<R: Runtime>(
         job_id,
         output_name,
         output_path: remux_result.output_path,
+        output_uri: publish_result.content_uri,
         media_playlist_url: segment_result.media_playlist_url,
-        output_bytes: remux_result.output_bytes,
+        output_bytes: publish_result.output_bytes,
         track_count: remux_result.track_count,
     })
 }

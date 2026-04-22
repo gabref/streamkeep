@@ -33,8 +33,12 @@
           <dt>Source</dt>
           <dd>{{ job.pageUrl }}</dd>
         </div>
+        <div v-if="job.outputUri">
+          <dt>Published URI</dt>
+          <dd>{{ job.outputUri }}</dd>
+        </div>
         <div v-if="job.outputPath">
-          <dt>Output</dt>
+          <dt>Private path</dt>
           <dd>{{ job.outputPath }}</dd>
         </div>
         <div v-if="job.outputBytes">

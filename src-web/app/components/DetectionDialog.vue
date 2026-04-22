@@ -94,6 +94,7 @@ import { computed, ref, watch } from 'vue';
 import AppButton from '@/app/components/AppButton.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
 import { buildMp4FileName, getInitialFileStem, type DetectedStream } from '@/domain/detection';
+import { clearActiveTextInteraction } from '@/utils/dom';
 
 const props = defineProps<{
   stream: DetectedStream;
@@ -118,14 +119,7 @@ watch(
 );
 
 function emitDownload() {
-  blurActiveElement();
+  clearActiveTextInteraction();
   emit('download', fileNameStem.value, selectedQuality.value);
-}
-
-function blurActiveElement() {
-  const activeElement = globalThis.document?.activeElement;
-  if (activeElement instanceof globalThis.HTMLElement) {
-    activeElement.blur();
-  }
 }
 </script>

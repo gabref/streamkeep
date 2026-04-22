@@ -146,6 +146,7 @@ import IconGlyph from '@/app/components/IconGlyph.vue';
 import StatusChip from '@/app/components/StatusChip.vue';
 import { useDetectionStore } from '@/stores/detection';
 import { useDownloadsStore } from '@/stores/downloads';
+import { clearActiveTextInteraction } from '@/utils/dom';
 
 const targetUrl = ref('https://example.com');
 const playerState = ref<PlayerState | null>(null);
@@ -278,7 +279,7 @@ onBeforeUnmount(() => {
 });
 
 async function openPlayerUrl() {
-  blurActiveElement();
+  clearActiveTextInteraction();
   await runPlayerCommand(() => openPlayer(targetUrl.value));
 }
 
@@ -295,7 +296,7 @@ async function reloadPlayer() {
 }
 
 async function confirmDownload(fileNameStem: string, qualityId: string) {
-  blurActiveElement();
+  clearActiveTextInteraction();
   const intent = detection.confirmDownload(fileNameStem, qualityId);
   if (!intent) {
     return;
@@ -369,10 +370,4 @@ function progressPercent(progress: DownloadProgressPayload): number | null {
   return null;
 }
 
-function blurActiveElement() {
-  const activeElement = globalThis.document?.activeElement;
-  if (activeElement instanceof globalThis.HTMLElement) {
-    activeElement.blur();
-  }
-}
 </script>

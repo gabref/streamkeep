@@ -51,6 +51,22 @@ pub struct RemuxToMp4Result {
     pub output_bytes: u64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishToDownloadsRequest {
+    pub input_path: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishToDownloadsResult {
+    pub content_uri: String,
+    pub display_name: String,
+    pub relative_path: String,
+    pub output_bytes: u64,
+}
+
 #[cfg(not(mobile))]
 impl PlayerState {
     fn unsupported() -> Self {
@@ -134,6 +150,22 @@ impl<R: Runtime> StreamkeepCapture<R> {
         {
             let _ = request;
             Err("Streamkeep MP4 remuxing is available on Android".to_owned())
+        }
+    }
+
+    pub fn publish_to_downloads(
+        &self,
+        request: PublishToDownloadsRequest,
+    ) -> Result<PublishToDownloadsResult, String> {
+        #[cfg(mobile)]
+        {
+            return self.run_mobile("publishToDownloads", request);
+        }
+
+        #[cfg(not(mobile))]
+        {
+            let _ = request;
+            Err("Publishing Streamkeep downloads is available on Android".to_owned())
         }
     }
 

@@ -10,6 +10,7 @@ const COMMANDS: &[&str] = &[
     "reload",
     "loadUrl",
     "remuxToMp4",
+    "publishToDownloads",
 ];
 
 fn main() {
