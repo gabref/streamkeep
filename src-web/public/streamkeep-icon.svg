@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Streamkeep">
+  <defs>
+    <linearGradient id="bg" x1="152" y1="104" x2="872" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7be0d3"/>
+      <stop offset=".48" stop-color="#43b8c6"/>
+      <stop offset="1" stop-color="#b8e37f"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="256" y1="166" x2="767" y2="876" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#11181a"/>
+      <stop offset="1" stop-color="#071011"/>
+    </linearGradient>
+    <linearGradient id="stream" x1="257" y1="283" x2="769" y2="735" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ecfffb"/>
+      <stop offset=".52" stop-color="#75d7cc"/>
+      <stop offset="1" stop-color="#c8f28c"/>
+    </linearGradient>
+    <filter id="shadow" x="128" y="104" width="768" height="792" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="28" stdDeviation="36" flood-color="#031012" flood-opacity=".38"/>
+    </filter>
+    <clipPath id="squircle">
+      <path d="M512 64c252 0 448 196 448 448S764 960 512 960 64 764 64 512 260 64 512 64Z"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <path fill="#d9fff2" opacity=".26" d="M52 684c180 74 314 92 457 48 151-47 251-141 463-103v407H52V684Z"/>
+    <path fill="#061112" opacity=".22" d="M-12 148c184-66 355-46 503 62 129 94 246 102 545 50V-32H-12v180Z"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path fill="url(#plate)" d="M512 146c156 0 286 52 286 52v286c0 190-114 313-286 394-172-81-286-204-286-394V198s130-52 286-52Z"/>
+    <path fill="none" stroke="#dffff8" stroke-opacity=".34" stroke-width="28" d="M512 184c126 0 238 40 238 40v256c0 162-89 264-238 338-149-74-238-176-238-338V224s112-40 238-40Z"/>
+  </g>
+
+  <path fill="url(#stream)" d="M318 378c0-42 45-69 82-48l296 171c37 21 37 75 0 96L400 768c-37 21-82-6-82-48V378Z"/>
+  <path fill="#071112" d="M428 441c0-16 18-27 32-19l171 99c14 8 14 30 0 38L460 658c-14 8-32-3-32-19V441Z"/>
+  <path fill="none" stroke="#ecfffb" stroke-linecap="round" stroke-width="44" d="M270 356c-76 39-120 95-120 156 0 69 57 132 150 171"/>
+  <path fill="none" stroke="#b8e37f" stroke-linecap="round" stroke-width="44" d="M754 341c78 40 121 96 121 159 0 71-57 135-153 174"/>
+  <path fill="none" stroke="#071112" stroke-linecap="round" stroke-opacity=".28" stroke-width="24" d="M271 356c-76 39-120 95-120 156 0 69 57 132 150 171"/>
+  <path fill="none" stroke="#071112" stroke-linecap="round" stroke-opacity=".25" stroke-width="24" d="M754 341c78 40 121 96 121 159 0 71-57 135-153 174"/>
+  <path fill="#ecfffb" d="M286 305a38 38 0 1 0 0-76 38 38 0 0 0 0 76Zm452 0a38 38 0 1 0 0-76 38 38 0 0 0 0 76ZM286 795a38 38 0 1 0 0-76 38 38 0 0 0 0 76Zm452 0a38 38 0 1 0 0-76 38 38 0 0 0 0 76Z"/>
+</svg>

@@ -129,13 +129,10 @@ svg {
 }
 
 .mainShell__mark {
-  display: grid;
-  place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: var(--color-accent);
-  color: #071210;
+  border-radius: 9px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 24%);
 }
 
 .mainShell__topNav {

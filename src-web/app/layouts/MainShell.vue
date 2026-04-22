@@ -5,7 +5,12 @@
         class="mainShell__brand"
         to="/"
       >
-        <span class="mainShell__mark">S</span>
+        <img
+          alt=""
+          aria-hidden="true"
+          class="mainShell__mark"
+          src="/streamkeep-icon.svg"
+        >
         <span>Streamkeep</span>
       </RouterLink>
       <nav
@@ -56,4 +61,3 @@
 import { RouterLink } from 'vue-router';
 import IconGlyph from '@/app/components/IconGlyph.vue';
 </script>
-
