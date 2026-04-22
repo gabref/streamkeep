@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "pnpm run dev:web",
-    "beforeBuildCommand": "pnpm run build-only"
+    "beforeBuildCommand": "pnpm run prepare:android && pnpm run build-only"
   },
   "app": {
     "windows": [
@@ -29,4 +29,3 @@
     "targets": "all"
   }
 }
-

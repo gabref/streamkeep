@@ -3,6 +3,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use m3u8_rs::{KeyMethod, Playlist, parse_playlist_res};
@@ -11,6 +12,7 @@ use reqwest::header::{COOKIE, HeaderMap, HeaderValue, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use streamkeep_hls_core::{HlsError, parse_master_playlist};
 use thiserror::Error;
+use tracing::{debug, info};
 use url::Url;
 
 #[derive(Debug, Error)]
@@ -83,6 +85,8 @@ pub struct DownloadProgress {
     pub total_segments: Option<u32>,
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 impl DownloadProgress {
@@ -93,7 +97,13 @@ impl DownloadProgress {
             total_segments: None,
             downloaded_bytes: 0,
             total_bytes: None,
+            message: None,
         }
+    }
+
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
     }
 
     pub fn percent(&self) -> Option<u8> {
@@ -143,22 +153,60 @@ pub async fn download_segments_to_transport_stream(
     output_path: impl AsRef<Path>,
     mut on_progress: impl FnMut(DownloadProgress),
 ) -> Result<SegmentDownloadResult, DownloadError> {
-    on_progress(DownloadProgress {
-        status: DownloadStatus::Preparing,
-        ..DownloadProgress::queued()
-    });
+    info!(
+        master_url = %request.master_url,
+        media_playlist_url = request.media_playlist_url.as_deref().unwrap_or(""),
+        output_path = %output_path.as_ref().display(),
+        "starting HLS segment download"
+    );
+    on_progress(
+        DownloadProgress {
+            status: DownloadStatus::Preparing,
+            ..DownloadProgress::queued()
+        }
+        .with_message("building http client"),
+    );
 
     let client = Client::builder()
         .default_headers(headers_for_request(request)?)
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(45))
         .build()
         .map_err(|source| DownloadError::Http {
             url: request.master_url.clone(),
             source,
         })?;
 
-    let media_playlist_url = resolve_media_playlist_url(&client, request).await?;
+    let media_playlist_url = resolve_media_playlist_url(&client, request, &mut on_progress).await?;
+    debug!(%media_playlist_url, "resolved media playlist");
+    on_progress(
+        DownloadProgress {
+            status: DownloadStatus::Preparing,
+            ..DownloadProgress::queued()
+        }
+        .with_message("fetching media playlist"),
+    );
     let media_playlist_body = fetch_text(&client, &media_playlist_url).await?;
+    debug!(
+        %media_playlist_url,
+        bytes = media_playlist_body.len(),
+        "fetched media playlist"
+    );
+    on_progress(
+        DownloadProgress {
+            status: DownloadStatus::Preparing,
+            ..DownloadProgress::queued()
+        }
+        .with_message("parsing media playlist"),
+    );
     let plan = parse_media_playlist(&media_playlist_url, media_playlist_body.as_bytes())?;
+    info!(
+        %media_playlist_url,
+        segments = plan.segments.len(),
+        target_duration_seconds = plan.target_duration_seconds,
+        end_list = plan.end_list,
+        "planned media playlist download"
+    );
     let total_segments = Some(plan.segments.len() as u32);
     let output_path = output_path.as_ref();
     let mut output = File::create(output_path).map_err(|source| DownloadError::Io {
@@ -174,9 +222,15 @@ pub async fn download_segments_to_transport_stream(
         total_segments,
         downloaded_bytes,
         total_bytes: None,
+        message: Some("writing segments".to_owned()),
     });
 
     for segment in &plan.segments {
+        debug!(
+            index = segment.index,
+            url = %segment.url,
+            "fetching media segment"
+        );
         let bytes = fetch_bytes(&client, &segment.url).await?;
         output
             .write_all(&bytes)
@@ -186,12 +240,20 @@ pub async fn download_segments_to_transport_stream(
             })?;
         downloaded_bytes += bytes.len() as u64;
         completed_segments += 1;
+        debug!(
+            index = segment.index,
+            segment_bytes = bytes.len(),
+            completed_segments,
+            downloaded_bytes,
+            "wrote media segment"
+        );
         on_progress(DownloadProgress {
             status: DownloadStatus::Downloading,
             completed_segments,
             total_segments,
             downloaded_bytes,
             total_bytes: None,
+            message: Some(format!("downloaded segment {}", segment.index + 1)),
         });
     }
 
@@ -199,6 +261,12 @@ pub async fn download_segments_to_transport_stream(
         path: output_path.to_path_buf(),
         source,
     })?;
+    info!(
+        completed_segments,
+        downloaded_bytes,
+        output_path = %output_path.display(),
+        "finished transport stream download"
+    );
 
     on_progress(DownloadProgress {
         status: DownloadStatus::Remuxing,
@@ -206,6 +274,7 @@ pub async fn download_segments_to_transport_stream(
         total_segments,
         downloaded_bytes,
         total_bytes: None,
+        message: Some("remuxing transport stream".to_owned()),
     });
 
     Ok(SegmentDownloadResult {
@@ -286,18 +355,54 @@ pub fn parse_media_playlist(
 async fn resolve_media_playlist_url(
     client: &Client,
     request: &DownloadRequest,
+    on_progress: &mut impl FnMut(DownloadProgress),
 ) -> Result<String, DownloadError> {
     if let Some(media_playlist_url) = &request.media_playlist_url {
+        on_progress(
+            DownloadProgress {
+                status: DownloadStatus::Preparing,
+                ..DownloadProgress::queued()
+            }
+            .with_message("using detected media playlist"),
+        );
         return Ok(media_playlist_url.clone());
     }
 
+    on_progress(
+        DownloadProgress {
+            status: DownloadStatus::Preparing,
+            ..DownloadProgress::queued()
+        }
+        .with_message("fetching master playlist"),
+    );
     let master_playlist_body = fetch_text(client, &request.master_url).await?;
+    debug!(
+        master_url = %request.master_url,
+        bytes = master_playlist_body.len(),
+        "fetched master playlist"
+    );
+    on_progress(
+        DownloadProgress {
+            status: DownloadStatus::Preparing,
+            ..DownloadProgress::queued()
+        }
+        .with_message("selecting best variant"),
+    );
     let master = parse_master_playlist(&request.master_url, master_playlist_body.as_bytes())?;
     let variant = master.best_variant().ok_or(DownloadError::NoVariant)?;
+    info!(
+        master_url = %request.master_url,
+        media_playlist_url = %variant.media_playlist_url,
+        bandwidth = variant.bandwidth,
+        width = variant.width.unwrap_or_default(),
+        height = variant.height.unwrap_or_default(),
+        "selected HLS variant"
+    );
     Ok(variant.media_playlist_url.clone())
 }
 
 async fn fetch_text(client: &Client, url: &str) -> Result<String, DownloadError> {
+    debug!(%url, "fetching text resource");
     client
         .get(url)
         .send()
@@ -320,6 +425,7 @@ async fn fetch_text(client: &Client, url: &str) -> Result<String, DownloadError>
 }
 
 async fn fetch_bytes(client: &Client, url: &str) -> Result<bytes::Bytes, DownloadError> {
+    debug!(%url, "fetching byte resource");
     let response = client
         .get(url)
         .send()
@@ -391,6 +497,7 @@ mod tests {
             total_segments: Some(10),
             downloaded_bytes: 0,
             total_bytes: None,
+            message: None,
         };
 
         assert_eq!(progress.percent(), Some(100));
@@ -404,6 +511,7 @@ mod tests {
             total_segments: Some(10),
             downloaded_bytes: 75,
             total_bytes: Some(100),
+            message: None,
         };
 
         assert_eq!(progress.percent(), Some(75));

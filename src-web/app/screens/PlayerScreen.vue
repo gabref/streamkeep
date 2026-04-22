@@ -102,6 +102,10 @@
           <span>Selected file</span>
           <strong>{{ confirmedFileLabel }}</strong>
         </div>
+        <div class="metricTile">
+          <span>Download</span>
+          <strong>{{ downloadProgressLabel }}</strong>
+        </div>
       </div>
     </section>
 
@@ -122,6 +126,12 @@ import {
   type CaptureRequestPayload,
 } from '@/api/capture';
 import {
+  listenForDownloadProgress,
+  startDownload,
+  type DownloadProgressPayload,
+  type StartDownloadResult,
+} from '@/api/downloads';
+import {
   getPlayerState,
   openPlayer,
   playerGoBack,
@@ -139,6 +149,8 @@ const targetUrl = ref('https://example.com');
 const playerState = ref<PlayerState | null>(null);
 const lastRequest = ref<CaptureRequestPayload | null>(null);
 const lastDetectedMaster = ref<CaptureRequestPayload | null>(null);
+const activeDownloadProgress = ref<DownloadProgressPayload | null>(null);
+const latestDownloadResult = ref<StartDownloadResult | null>(null);
 const errorMessage = ref<string | null>(null);
 const isBusy = ref(false);
 const listenerCleanup = ref<Array<() => Promise<void>>>([]);
@@ -162,6 +174,9 @@ const playerStateLabel = computed(() => {
 const playerMessage = computed(() => {
   if (errorMessage.value) {
     return errorMessage.value;
+  }
+  if (latestDownloadResult.value) {
+    return `Saved ${latestDownloadResult.value.outputName}`;
   }
   if (detection.confirmedIntent) {
     return `Ready to download ${detection.confirmedIntent.fileName}`;
@@ -200,7 +215,28 @@ const lastRequestLabel = computed(() => {
 });
 
 const confirmedFileLabel = computed(() => {
-  return detection.confirmedIntent?.fileName ?? 'None';
+  return latestDownloadResult.value?.outputName ?? detection.confirmedIntent?.fileName ?? 'None';
+});
+
+const downloadProgressLabel = computed(() => {
+  if (latestDownloadResult.value) {
+    return 'Done';
+  }
+  if (!activeDownloadProgress.value) {
+    return 'Idle';
+  }
+
+  const percent = progressPercent(activeDownloadProgress.value);
+  if (activeDownloadProgress.value.message && percent === null) {
+    return activeDownloadProgress.value.message;
+  }
+  if (activeDownloadProgress.value.message) {
+    return `${activeDownloadProgress.value.message} ${percent}%`;
+  }
+  if (percent === null) {
+    return activeDownloadProgress.value.status;
+  }
+  return `${activeDownloadProgress.value.status} ${percent}%`;
 });
 
 onMounted(async () => {
@@ -216,6 +252,12 @@ onMounted(async () => {
     () => requestListener.unregister(),
     () => masterListener.unregister(),
   ];
+  const downloadProgressListener = await listenForDownloadProgress((payload) => {
+    activeDownloadProgress.value = payload;
+  });
+  listenerCleanup.value.push(async () => {
+    downloadProgressListener();
+  });
   await runPlayerCommand(getPlayerState);
 });
 
@@ -241,8 +283,46 @@ async function reloadPlayer() {
   return playerReload();
 }
 
-function confirmDownload(fileNameStem: string, qualityId: string) {
-  detection.confirmDownload(fileNameStem, qualityId);
+async function confirmDownload(fileNameStem: string, qualityId: string) {
+  const intent = detection.confirmDownload(fileNameStem, qualityId);
+  if (!intent) {
+    return;
+  }
+
+  isBusy.value = true;
+  errorMessage.value = null;
+  activeDownloadProgress.value = {
+    status: 'queued',
+    completedSegments: 0,
+    totalSegments: null,
+    downloadedBytes: 0,
+    totalBytes: null,
+    message: 'queued',
+  };
+
+  try {
+    const selectedQuality = intent.stream.qualities.find((quality) => quality.id === qualityId);
+    latestDownloadResult.value = await startDownload({
+      masterUrl: intent.stream.masterUrl,
+      mediaPlaylistUrl: selectedQuality?.mediaPlaylistUrl ?? null,
+      referer: intent.stream.referer,
+      userAgent: intent.stream.userAgent,
+      cookies: intent.stream.cookies,
+      outputName: intent.fileName,
+    });
+  } catch (error) {
+    activeDownloadProgress.value = {
+      status: 'failed',
+      completedSegments: activeDownloadProgress.value?.completedSegments ?? 0,
+      totalSegments: activeDownloadProgress.value?.totalSegments ?? null,
+      downloadedBytes: activeDownloadProgress.value?.downloadedBytes ?? 0,
+      totalBytes: activeDownloadProgress.value?.totalBytes ?? null,
+      message: error instanceof Error ? error.message : String(error),
+    };
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    isBusy.value = false;
+  }
 }
 
 async function runPlayerCommand(command: () => Promise<PlayerState>) {
@@ -255,5 +335,15 @@ async function runPlayerCommand(command: () => Promise<PlayerState>) {
   } finally {
     isBusy.value = false;
   }
+}
+
+function progressPercent(progress: DownloadProgressPayload): number | null {
+  if (progress.totalBytes && progress.totalBytes > 0) {
+    return Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes);
+  }
+  if (progress.totalSegments && progress.totalSegments > 0) {
+    return Math.floor((Math.min(progress.completedSegments, progress.totalSegments) * 100) / progress.totalSegments);
+  }
+  return null;
 }
 </script>

@@ -3856,10 +3856,13 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 name = "streamkeep"
 version = "0.1.0"
 dependencies = [
+ "jni",
  "log",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "streamkeep-app-core",
+ "streamkeep-download-core",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -3891,6 +3894,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "url",
 ]
 

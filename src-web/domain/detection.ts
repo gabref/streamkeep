@@ -3,6 +3,7 @@ import type { CaptureRequestPayload } from '@/api/capture';
 export type QualityOption = {
   id: string;
   label: string;
+  mediaPlaylistUrl?: string;
 };
 
 export type DetectedStream = {
