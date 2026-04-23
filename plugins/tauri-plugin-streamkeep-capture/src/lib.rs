@@ -69,6 +69,26 @@ pub struct PublishToDownloadsResult {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateThumbnailRequest {
+    pub input_path: String,
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateThumbnailResult {
+    pub output_path: String,
+    pub output_bytes: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletePublishedDownloadRequest {
+    pub content_uri: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenUriRequest {
     pub content_uri: String,
     pub mime_type: Option<String>,
@@ -176,6 +196,38 @@ impl<R: Runtime> StreamkeepCapture<R> {
         }
     }
 
+    pub fn create_thumbnail(
+        &self,
+        request: CreateThumbnailRequest,
+    ) -> Result<CreateThumbnailResult, String> {
+        #[cfg(mobile)]
+        {
+            return self.run_mobile("createThumbnail", request);
+        }
+
+        #[cfg(not(mobile))]
+        {
+            let _ = request;
+            Err("Streamkeep thumbnail extraction is available on Android".to_owned())
+        }
+    }
+
+    pub fn delete_published_download(
+        &self,
+        request: DeletePublishedDownloadRequest,
+    ) -> Result<(), String> {
+        #[cfg(mobile)]
+        {
+            return self.run_mobile("deletePublishedDownload", request);
+        }
+
+        #[cfg(not(mobile))]
+        {
+            let _ = request;
+            Ok(())
+        }
+    }
+
     pub fn open_uri(&self, request: OpenUriRequest) -> Result<(), String> {
         #[cfg(mobile)]
         {
@@ -184,8 +236,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            let _ = request;
-            Err("Opening Streamkeep downloads is available on Android".to_owned())
+            open_uri_on_desktop(&request.content_uri)
         }
     }
 
@@ -236,6 +287,44 @@ impl<R: Runtime> StreamkeepCapture<R> {
             .run_mobile_plugin(command, payload)
             .map_err(|error| error.to_string())
     }
+}
+
+#[cfg(not(mobile))]
+fn open_uri_on_desktop(value: &str) -> Result<(), String> {
+    let target = value
+        .strip_prefix("file://")
+        .unwrap_or(value)
+        .trim()
+        .to_owned();
+    if target.is_empty() {
+        return Err("No Streamkeep file path was provided".to_owned());
+    }
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/C", "start", "", &target]);
+        command
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = std::process::Command::new("open");
+        command.arg(&target);
+        command
+    };
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    let mut command = {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(&target);
+        command
+    };
+
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Failed to open Streamkeep file: {error}"))
 }
 
 pub trait StreamkeepCaptureExt<R: Runtime> {

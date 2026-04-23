@@ -12,6 +12,8 @@
     "streamkeep-capture:allow-openUri",
     "streamkeep-capture:allow-publishToDownloads",
     "streamkeep-capture:allow-remuxToMp4",
+    "streamkeep-capture:allow-createThumbnail",
+    "streamkeep-capture:allow-deletePublishedDownload",
     "streamkeep-capture:allow-startDownloadKeepAlive",
     "streamkeep-capture:allow-stopDownloadKeepAlive"
   ]

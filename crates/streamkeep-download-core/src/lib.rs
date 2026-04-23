@@ -16,8 +16,8 @@ use tracing::{debug, info};
 use url::Url;
 
 const OUTPUT_BUFFER_SIZE: usize = 1024 * 1024;
-const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
-const PROGRESS_EMIT_BYTES: u64 = 512 * 1024;
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(180);
+const PROGRESS_EMIT_BYTES: u64 = 128 * 1024;
 
 #[derive(Debug, Error)]
 pub enum DownloadError {

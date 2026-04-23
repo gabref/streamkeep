@@ -12,36 +12,6 @@
       </StatusChip>
     </div>
 
-    <section class="toolBand">
-      <AppButton
-        icon="arrow-left"
-        :disabled="isBusy"
-        @click="runPlayerCommand(goBack)"
-      >
-        Back
-      </AppButton>
-      <AppButton
-        icon="arrow-right"
-        :disabled="isBusy"
-        @click="runPlayerCommand(goForward)"
-      >
-        Forward
-      </AppButton>
-      <AppButton
-        icon="rotate-cw"
-        :disabled="isBusy"
-        @click="runPlayerCommand(reloadPlayer)"
-      >
-        Reload
-      </AppButton>
-      <AppButton
-        icon="home"
-        to="/"
-      >
-        Home
-      </AppButton>
-    </section>
-
     <section class="browserFrame">
       <form
         class="browserFrame__bar"
@@ -55,7 +25,7 @@
           autocapitalize="off"
           inputmode="url"
           spellcheck="false"
-          type="url"
+          type="text"
         >
         <AppButton
           icon="play"
@@ -74,8 +44,8 @@
       </p>
     </section>
 
-    <section class="sectionBlock sectionBlock--compact">
-      <h2>Detection state</h2>
+    <section class="sectionBlock sectionBlock--compact detectionPanel">
+      <h2>Detection</h2>
       <div class="detectionStrip">
         <div>
           <span>Status</span>
@@ -123,9 +93,6 @@ import {
 import {
   getPlayerState,
   openPlayer,
-  playerGoBack,
-  playerGoForward,
-  playerReload,
   type PlayerState,
 } from '@/api/player';
 import AppButton from '@/app/components/AppButton.vue';
@@ -252,18 +219,6 @@ async function openPlayerUrl() {
   clearActiveTextInteraction();
   persistPlayerUrl(targetUrl.value);
   await runPlayerCommand(() => openPlayer(targetUrl.value));
-}
-
-async function goBack() {
-  return playerGoBack();
-}
-
-async function goForward() {
-  return playerGoForward();
-}
-
-async function reloadPlayer() {
-  return playerReload();
 }
 
 async function confirmDownload(fileNameStem: string, qualityId: string) {

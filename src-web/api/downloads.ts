@@ -30,6 +30,7 @@ export type StartDownloadResult = {
   mediaPlaylistUrl: string;
   outputBytes: number;
   trackCount: number;
+  thumbnailPath?: string | null;
 };
 
 export type DownloadProgressPayload = {
@@ -63,6 +64,7 @@ export type DownloadJobRecord = {
   outputPath?: string | null;
   outputUri?: string | null;
   outputBytes?: number | null;
+  thumbnailPath?: string | null;
   errorMessage?: string | null;
 };
 

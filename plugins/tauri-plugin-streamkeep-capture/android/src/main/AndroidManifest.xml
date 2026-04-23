@@ -12,7 +12,8 @@
         <activity
             android:name=".StreamkeepPlayerActivity"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|uiMode"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
         <service
             android:name=".StreamkeepDownloadService"
             android:exported="false"

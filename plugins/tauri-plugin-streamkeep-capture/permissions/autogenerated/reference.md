@@ -10,6 +10,58 @@
 <tr>
 <td>
 
+`streamkeep-capture:allow-createThumbnail`
+
+</td>
+<td>
+
+Enables the createThumbnail command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-createThumbnail`
+
+</td>
+<td>
+
+Denies the createThumbnail command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:allow-deletePublishedDownload`
+
+</td>
+<td>
+
+Enables the deletePublishedDownload command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`streamkeep-capture:deny-deletePublishedDownload`
+
+</td>
+<td>
+
+Denies the deletePublishedDownload command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `streamkeep-capture:allow-getPlayerState`
 
 </td>

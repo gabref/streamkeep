@@ -9,10 +9,12 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
 import android.webkit.ServiceWorkerClient
@@ -41,6 +43,8 @@ class StreamkeepPlayerActivity : Activity() {
   private lateinit var detectedPane: LinearLayout
   private lateinit var detectedTitleView: TextView
   private lateinit var detectedFileNameField: EditText
+  private lateinit var detectedCancelButton: Button
+  private lateinit var detectedDownloadButton: Button
   private var detectedPayload: JSObject? = null
   private var loading = false
   private var currentTitle: String? = null
@@ -54,6 +58,7 @@ class StreamkeepPlayerActivity : Activity() {
     super.onCreate(savedInstanceState)
     window.statusBarColor = Color.rgb(15, 19, 20)
     window.navigationBarColor = Color.rgb(15, 19, 20)
+    window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
     setContentView(createLayout())
     configureWebView()
@@ -121,7 +126,10 @@ class StreamkeepPlayerActivity : Activity() {
         ?: "Streamkeep capture"
       detectedTitleView.text = title
       detectedFileNameField.setText(sanitizeFileStem(title))
-      detectedPane.visibility = View.VISIBLE
+      detectedCancelButton.isEnabled = true
+      detectedDownloadButton.isEnabled = true
+      detectedDownloadButton.text = "Download MP4"
+      showDetectedPane()
     }
   }
 
@@ -149,11 +157,13 @@ class StreamkeepPlayerActivity : Activity() {
       setTypeface(typeface, Typeface.BOLD)
       textSize = 16f
       gravity = Gravity.CENTER_VERTICAL
-      setPadding(dp(14), dp(8), dp(14), dp(2))
+      maxLines = 1
+      ellipsize = TextUtils.TruncateAt.END
+      setPadding(dp(14), statusBarHeight() + dp(8), dp(14), dp(2))
     }
     root.addView(titleView, LinearLayout.LayoutParams(
       ViewGroup.LayoutParams.MATCH_PARENT,
-      dp(40)
+      statusBarHeight() + dp(42)
     ))
 
     val controls = LinearLayout(this).apply {
@@ -162,10 +172,10 @@ class StreamkeepPlayerActivity : Activity() {
       setPadding(dp(8), dp(4), dp(8), dp(8))
     }
 
-    controls.addView(toolbarButton("Back") { goBack() }, LinearLayout.LayoutParams(0, dp(46), 1f))
-    controls.addView(toolbarButton("Forward") { goForward() }, LinearLayout.LayoutParams(0, dp(46), 1f))
-    controls.addView(toolbarButton("Reload") { reload() }, LinearLayout.LayoutParams(0, dp(46), 1f))
-    controls.addView(toolbarButton("Close") { finish() }, LinearLayout.LayoutParams(0, dp(46), 1f))
+    controls.addView(toolbarButton("Back", "\u2039") { goBack() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+    controls.addView(toolbarButton("Forward", "\u203a") { goForward() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+    controls.addView(toolbarButton("Reload", "\u21bb") { reload() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+    controls.addView(toolbarButton("Close", "\u2715") { finish() }, LinearLayout.LayoutParams(0, dp(40), 1f))
     root.addView(controls)
 
     val addressBar = LinearLayout(this).apply {
@@ -226,6 +236,34 @@ class StreamkeepPlayerActivity : Activity() {
     )
 
     return rootFrame
+  }
+
+  private fun showDetectedPane() {
+    detectedPane.clearAnimation()
+    if (detectedPane.visibility != View.VISIBLE) {
+      detectedPane.alpha = 0f
+      detectedPane.translationY = dp(22).toFloat()
+      detectedPane.visibility = View.VISIBLE
+    }
+    detectedPane.animate()
+      .alpha(1f)
+      .translationY(0f)
+      .setDuration(180L)
+      .start()
+  }
+
+  private fun hideDetectedPane() {
+    detectedPane.clearAnimation()
+    detectedPane.animate()
+      .alpha(0f)
+      .translationY(dp(22).toFloat())
+      .setDuration(160L)
+      .withEndAction {
+        detectedPane.visibility = View.GONE
+        detectedPane.translationY = 0f
+        detectedPane.alpha = 1f
+      }
+      .start()
   }
 
   @SuppressLint("SetJavaScriptEnabled")
@@ -380,15 +418,16 @@ class StreamkeepPlayerActivity : Activity() {
     return fallback
   }
 
-  private fun toolbarButton(label: String, onClick: () -> Unit): Button {
+  private fun toolbarButton(label: String, icon: String? = null, onClick: () -> Unit): Button {
+    val textValue = if (icon.isNullOrBlank()) label else "$icon $label"
     return Button(this).apply {
-      text = label
+      text = textValue
       isAllCaps = false
       minWidth = dp(48)
-      minHeight = dp(46)
+      minHeight = dp(40)
       setTextColor(Color.rgb(245, 247, 247))
       setTypeface(typeface, Typeface.BOLD)
-      textSize = 12f
+      textSize = 11f
       background = roundedBackground(Color.rgb(32, 40, 43), Color.rgb(51, 65, 69))
       setOnClickListener { onClick() }
     }
@@ -437,14 +476,19 @@ class StreamkeepPlayerActivity : Activity() {
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(10), 0, 0)
       }
-      actions.addView(toolbarButton("Not now") {
-        detectedPane.visibility = View.GONE
-      }, LinearLayout.LayoutParams(0, dp(44), 1f))
-      actions.addView(toolbarButton("Download MP4") {
+      detectedCancelButton = toolbarButton("Not now") {
+        hideDetectedPane()
+      }
+      actions.addView(detectedCancelButton, LinearLayout.LayoutParams(0, dp(44), 1f))
+      detectedDownloadButton = toolbarButton("Download MP4") {
         val payload = detectedPayload ?: return@toolbarButton
+        detectedCancelButton.isEnabled = false
+        detectedDownloadButton.isEnabled = false
+        detectedDownloadButton.text = "Starting..."
         StreamkeepPlayerRegistry.requestDownload(payload, detectedFileNameField.text.toString())
-        detectedPane.visibility = View.GONE
-      }, LinearLayout.LayoutParams(0, dp(44), 1.2f))
+        hideDetectedPane()
+      }
+      actions.addView(detectedDownloadButton, LinearLayout.LayoutParams(0, dp(44), 1.2f))
       addView(actions)
     }
   }
@@ -462,11 +506,25 @@ class StreamkeepPlayerActivity : Activity() {
   }
 
   private fun normalizeUrl(value: String): String {
-    val trimmed = value.trim()
+    val trimmed = Uri.decode(value).trim()
+    if (trimmed.isBlank()) {
+      return currentPageUrl ?: DEFAULT_URL
+    }
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       return trimmed
     }
-    return "https://${Uri.encode(trimmed)}"
+    if (looksLikeLocalAddress(trimmed)) {
+      return "http://$trimmed"
+    }
+    return "https://$trimmed"
+  }
+
+  private fun looksLikeLocalAddress(value: String): Boolean {
+    return value.startsWith("localhost", ignoreCase = true) ||
+      value.startsWith("127.") ||
+      value.startsWith("10.") ||
+      value.startsWith("192.168.") ||
+      Regex("""^172\.(1[6-9]|2\d|3[0-1])\.""").containsMatchIn(value)
   }
 
   private fun sanitizeFileStem(value: String): String {
@@ -486,6 +544,15 @@ class StreamkeepPlayerActivity : Activity() {
 
   private fun dp(value: Int): Int {
     return (value * resources.displayMetrics.density).toInt()
+  }
+
+  private fun statusBarHeight(): Int {
+    val resourceId = resources.getIdentifier("status_bar_height", "dimen", "android")
+    return if (resourceId > 0) {
+      resources.getDimensionPixelSize(resourceId)
+    } else {
+      0
+    }
   }
 
   companion object {

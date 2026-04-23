@@ -22,12 +22,21 @@
           class="jobCard"
           :to="`/downloads/${job.id}`"
         >
+          <img
+            v-if="job.thumbnailUrl"
+            alt=""
+            class="jobCard__thumbnail"
+            :src="job.thumbnailUrl"
+          >
           <span class="jobCard__title">{{ job.title }}</span>
           <span class="muted">{{ job.outputName }}</span>
-          <ProgressBar
-            :value="job.progress"
-            :label="`${job.title} progress`"
-          />
+          <div class="progressLine">
+            <ProgressBar
+              :value="job.progress"
+              :label="`${job.title} progress`"
+            />
+            <strong>{{ job.progress }}%</strong>
+          </div>
         </RouterLink>
       </div>
     </section>
@@ -50,6 +59,12 @@
           class="jobRow"
           :to="`/downloads/${job.id}`"
         >
+          <img
+            v-if="job.thumbnailUrl"
+            alt=""
+            class="jobRow__thumbnail"
+            :src="job.thumbnailUrl"
+          >
           <span>
             <strong>{{ job.title }}</strong>
             <small>{{ job.outputName }}</small>
@@ -61,24 +76,24 @@
       </div>
     </section>
 
-    <section class="sectionBlock">
+    <section
+      v-if="downloads.failedJobs.length"
+      class="sectionBlock"
+    >
       <h2>Failed</h2>
-      <p
-        v-if="!downloads.failedJobs.length"
-        class="muted"
-      >
-        No failed downloads.
-      </p>
-      <div
-        v-else
-        class="listStack"
-      >
+      <div class="listStack">
         <RouterLink
           v-for="job in downloads.failedJobs"
           :key="job.id"
           class="jobRow"
           :to="`/downloads/${job.id}`"
         >
+          <img
+            v-if="job.thumbnailUrl"
+            alt=""
+            class="jobRow__thumbnail"
+            :src="job.thumbnailUrl"
+          >
           <span>
             <strong>{{ job.title }}</strong>
             <small>{{ job.errorMessage }}</small>

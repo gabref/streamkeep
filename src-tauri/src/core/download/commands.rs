@@ -14,7 +14,8 @@ use streamkeep_storage_core::{
 };
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_streamkeep_capture::{
-    OpenUriRequest, PublishToDownloadsRequest, RemuxToMp4Request, StreamkeepCaptureExt,
+    CreateThumbnailRequest, DeletePublishedDownloadRequest, OpenUriRequest,
+    PublishToDownloadsRequest, RemuxToMp4Request, StreamkeepCaptureExt,
 };
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -45,6 +46,7 @@ pub struct StartDownloadResult {
     pub media_playlist_url: String,
     pub output_bytes: u64,
     pub track_count: u32,
+    pub thumbnail_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -77,10 +79,12 @@ pub async fn start_download_command<R: Runtime>(
 
     let transport_path = temp_transport_path(&download_dir, &output_name);
     let output_path = unique_output_path(&download_dir, &output_name);
+    let thumbnail_path = unique_thumbnail_path(&download_dir, &output_name);
     debug!(
         download_dir = %download_dir.display(),
         transport_path = %transport_path.display(),
         output_path = %output_path.display(),
+        thumbnail_path = %thumbnail_path.display(),
         output_name = %output_name,
         "resolved download paths"
     );
@@ -221,10 +225,22 @@ pub async fn start_download_command<R: Runtime>(
     };
 
     let _ = fs::remove_file(&transport_path);
+    let thumbnail_result = match app
+        .streamkeep_capture()
+        .create_thumbnail(CreateThumbnailRequest {
+            input_path: remux_result.output_path.clone(),
+            output_path: thumbnail_path.to_string_lossy().to_string(),
+        }) {
+        Ok(result) => Some(result),
+        Err(error) => {
+            debug!(?error, "failed to create Streamkeep thumbnail");
+            None
+        }
+    };
     info!(
         input_path = %remux_result.output_path,
         output_name = %output_name,
-        "publishing Streamkeep MP4 to Android Downloads"
+        "publishing Streamkeep MP4 to Android media library"
     );
     let _ = app.emit(
         "download:progress",
@@ -239,7 +255,7 @@ pub async fn start_download_command<R: Runtime>(
                 current_segment_total_bytes: None,
                 downloaded_bytes: remux_result.output_bytes,
                 total_bytes: None,
-                message: Some("publishing mp4 to Downloads".to_owned()),
+                message: Some("publishing mp4 to media library".to_owned()),
             },
         },
     );
@@ -253,7 +269,7 @@ pub async fn start_download_command<R: Runtime>(
             }) {
             Ok(result) => result,
             Err(error) => {
-                error!(?error, "failed to publish MP4 to Android Downloads");
+                error!(?error, "failed to publish MP4 to Android media library");
                 mark_job_failed(
                     &app,
                     &history_path,
@@ -271,7 +287,7 @@ pub async fn start_download_command<R: Runtime>(
         output_uri = %publish_result.content_uri,
         output_bytes = publish_result.output_bytes,
         track_count = remux_result.track_count,
-        "saved Streamkeep MP4 to public Downloads"
+        "saved Streamkeep MP4 to public media library"
     );
 
     if let Ok(mut record) = progress_record.lock() {
@@ -279,10 +295,14 @@ pub async fn start_download_command<R: Runtime>(
             "{}/{}",
             publish_result.relative_path, publish_result.display_name
         );
+        let thumbnail_output_path = thumbnail_result
+            .as_ref()
+            .map(|thumbnail| thumbnail.output_path.clone());
         record.mark_done(
             public_output_path.clone(),
             publish_result.content_uri.clone(),
             publish_result.output_bytes,
+            thumbnail_output_path,
         );
         job_record = record.clone();
         persist_job_record(&history_path, job_record.clone())?;
@@ -326,6 +346,7 @@ pub async fn start_download_command<R: Runtime>(
         media_playlist_url: segment_result.media_playlist_url,
         output_bytes: publish_result.output_bytes,
         track_count: remux_result.track_count,
+        thumbnail_path: thumbnail_result.map(|thumbnail| thumbnail.output_path),
     })
 }
 
@@ -356,6 +377,10 @@ pub fn delete_download_history_command<R: Runtime>(
         .join("downloads");
     let history_path = history_file_path(&download_dir);
     let mut history = read_download_history(&history_path)?;
+    let removed_job = history.jobs.iter().find(|job| job.id == id).cloned();
+    if let Some(job) = &removed_job {
+        delete_job_files(&app, job);
+    }
     history.remove(id);
     write_download_history(&history_path, &history)?;
     Ok(history.jobs)
@@ -436,6 +461,44 @@ fn history_file_path(download_dir: &Path) -> PathBuf {
     download_dir.join("history.json")
 }
 
+fn delete_job_files<R: Runtime>(app: &AppHandle<R>, job: &DownloadJobRecord) {
+    if let Some(content_uri) = &job.output_uri
+        && let Err(error) =
+            app.streamkeep_capture()
+                .delete_published_download(DeletePublishedDownloadRequest {
+                    content_uri: content_uri.clone(),
+                })
+    {
+        warn!(
+            ?error,
+            content_uri, "failed to delete published Streamkeep download"
+        );
+    }
+
+    if let Some(output_path) = &job.output_path {
+        delete_private_file_if_app_owned(output_path);
+    }
+
+    if let Some(thumbnail_path) = &job.thumbnail_path {
+        delete_private_file_if_app_owned(thumbnail_path);
+    }
+}
+
+fn delete_private_file_if_app_owned(path: &str) {
+    let candidate = PathBuf::from(path);
+    if !candidate.is_absolute() || !candidate.exists() {
+        return;
+    }
+
+    if let Err(error) = fs::remove_file(&candidate) {
+        debug!(
+            ?error,
+            path = %candidate.display(),
+            "failed to remove private Streamkeep file"
+        );
+    }
+}
+
 fn persist_job_record(history_path: &Path, record: DownloadJobRecord) -> Result<(), String> {
     let mut history = read_download_history(history_path)?;
     history.upsert(record);
@@ -480,6 +543,23 @@ fn unique_output_path(download_dir: &std::path::Path, output_name: &str) -> Path
     }
 
     download_dir.join(format!("{stem} (999).mp4"))
+}
+
+fn unique_thumbnail_path(download_dir: &std::path::Path, output_name: &str) -> PathBuf {
+    let stem = output_name.strip_suffix(".mp4").unwrap_or(output_name);
+    let candidate = download_dir.join(format!("{stem}.thumb.jpg"));
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    for index in 1..1000 {
+        let candidate = download_dir.join(format!("{stem} ({index}).thumb.jpg"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    download_dir.join(format!("{stem} (999).thumb.jpg"))
 }
 
 fn sanitize_file_name(value: &str) -> String {

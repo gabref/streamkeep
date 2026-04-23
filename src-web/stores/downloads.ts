@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import {
   listDownloadHistory,
   type DownloadJobRecord,
@@ -27,6 +28,8 @@ export type DownloadJob = {
   outputPath?: string | null;
   outputUri?: string | null;
   outputBytes?: number | null;
+  thumbnailPath?: string | null;
+  thumbnailUrl?: string | null;
 };
 
 export const useDownloadsStore = defineStore('downloads', {
@@ -76,13 +79,16 @@ export const useDownloadsStore = defineStore('downloads', {
         return;
       }
 
+      const previousStatus = job.status;
       job.status = progress.status;
       job.progress = progressPercent(progress) ?? job.progress;
       job.updatedAt = new Date().toISOString();
       if (progress.status === 'failed' && progress.message) {
         job.errorMessage = progress.message;
       }
-      this.sortJobs();
+      if (previousStatus !== job.status) {
+        this.sortJobs();
+      }
     },
     findJob(jobId: string): DownloadJob | undefined {
       return this.jobs.find((job) => job.id === jobId);
@@ -121,6 +127,8 @@ function recordToJob(record: DownloadJobRecord): DownloadJob {
     outputPath: record.outputPath,
     outputUri: record.outputUri,
     outputBytes: record.outputBytes,
+    thumbnailPath: record.thumbnailPath,
+    thumbnailUrl: record.thumbnailPath ? convertFileSrc(record.thumbnailPath) : null,
     errorMessage: record.errorMessage,
   };
 }

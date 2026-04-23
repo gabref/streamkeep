@@ -34,6 +34,17 @@ class PublishToDownloadsArgs {
 }
 
 @InvokeArg
+class CreateThumbnailArgs {
+  lateinit var inputPath: String
+  lateinit var outputPath: String
+}
+
+@InvokeArg
+class DeletePublishedDownloadArgs {
+  lateinit var contentUri: String
+}
+
+@InvokeArg
 class OpenUriArgs {
   lateinit var contentUri: String
   var mimeType: String? = null
@@ -160,6 +171,43 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   }
 
   @Command
+  fun createThumbnail(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(CreateThumbnailArgs::class.java)
+      ioExecutor.execute {
+        try {
+          val result = StreamkeepThumbnailer.createThumbnail(args.inputPath, args.outputPath)
+          val payload = JSObject()
+          payload.put("outputPath", result.outputPath)
+          payload.put("outputBytes", result.outputBytes)
+          activity.runOnUiThread { invoke.resolve(payload) }
+        } catch (ex: Exception) {
+          activity.runOnUiThread { invoke.reject(ex.message ?: "Failed to create Streamkeep thumbnail") }
+        }
+      }
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "Failed to create Streamkeep thumbnail")
+    }
+  }
+
+  @Command
+  fun deletePublishedDownload(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(DeletePublishedDownloadArgs::class.java)
+      ioExecutor.execute {
+        try {
+          StreamkeepPublishedDownloadDeleter.delete(activity, args.contentUri)
+          activity.runOnUiThread { invoke.resolve() }
+        } catch (ex: Exception) {
+          activity.runOnUiThread { invoke.reject(ex.message ?: "Failed to delete Streamkeep download") }
+        }
+      }
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "Failed to delete Streamkeep download")
+    }
+  }
+
+  @Command
   fun startDownloadKeepAlive(invoke: Invoke) {
     try {
       StreamkeepDownloadService.start(activity)
@@ -184,10 +232,10 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
     try {
       val args = invoke.parseArgs(OpenUriArgs::class.java)
       val intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(Uri.parse(args.contentUri), args.mimeType ?: "video/mp4")
+        setDataAndType(Uri.parse(args.contentUri), args.mimeType ?: "video/*")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
       }
-      activity.startActivity(Intent.createChooser(intent, "Open with"))
+      activity.startActivity(Intent.createChooser(intent, "Open video"))
       invoke.resolve()
     } catch (ex: Exception) {
       invoke.reject(ex.message ?: "Failed to open published file")
@@ -195,14 +243,25 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   }
 
   private fun normalizeUrl(value: String?): String {
-    val trimmed = value?.trim().orEmpty()
+    val trimmed = Uri.decode(value?.trim().orEmpty()).trim()
     if (trimmed.isEmpty()) {
       return StreamkeepPlayerActivity.lastUrl(activity)
     }
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       return trimmed
     }
+    if (looksLikeLocalAddress(trimmed)) {
+      return "http://$trimmed"
+    }
     return "https://$trimmed"
+  }
+
+  private fun looksLikeLocalAddress(value: String): Boolean {
+    return value.startsWith("localhost", ignoreCase = true) ||
+      value.startsWith("127.") ||
+      value.startsWith("10.") ||
+      value.startsWith("192.168.") ||
+      Regex("""^172\.(1[6-9]|2\d|3[0-1])\.""").containsMatchIn(value)
   }
 
   fun emitCaptureEvent(event: String, payload: JSObject) {

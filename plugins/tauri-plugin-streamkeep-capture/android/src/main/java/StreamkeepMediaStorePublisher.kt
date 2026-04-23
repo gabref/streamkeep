@@ -44,16 +44,16 @@ object StreamkeepMediaStorePublisher {
     displayName: String
   ): StreamkeepPublishResult {
     val resolver = activity.contentResolver
-    val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$STREAMKEEP_FOLDER"
+    val relativePath = "${Environment.DIRECTORY_MOVIES}/$STREAMKEEP_FOLDER"
     val values = ContentValues().apply {
       put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
       put(MediaStore.MediaColumns.MIME_TYPE, MIME_TYPE)
       put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
       put(MediaStore.MediaColumns.IS_PENDING, 1)
     }
-    val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    val collection = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
     val uri = requireNotNull(resolver.insert(collection, values)) {
-      "Failed to create MediaStore Downloads entry"
+      "Failed to create MediaStore video entry"
     }
 
     try {
@@ -85,9 +85,9 @@ object StreamkeepMediaStorePublisher {
     inputFile: File,
     displayName: String
   ): StreamkeepPublishResult {
-    val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$STREAMKEEP_FOLDER"
-    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-    val outputDir = File(downloadsDir, STREAMKEEP_FOLDER)
+    val relativePath = "${Environment.DIRECTORY_MOVIES}/$STREAMKEEP_FOLDER"
+    val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+    val outputDir = File(moviesDir, STREAMKEEP_FOLDER)
     outputDir.mkdirs()
 
     val outputFile = uniqueFile(outputDir, displayName)

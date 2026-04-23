@@ -16,10 +16,19 @@
       v-if="job"
       class="sectionBlock"
     >
-      <ProgressBar
-        :value="job.progress"
-        :label="`${job.title} progress`"
-      />
+      <img
+        v-if="job.thumbnailUrl"
+        alt=""
+        class="detailThumbnail"
+        :src="job.thumbnailUrl"
+      >
+      <div class="progressLine">
+        <ProgressBar
+          :value="job.progress"
+          :label="`${job.title} progress`"
+        />
+        <strong>{{ job.progress }}%</strong>
+      </div>
       <dl class="detailList">
         <div>
           <dt>File</dt>
@@ -44,6 +53,10 @@
         <div v-if="job.outputBytes">
           <dt>Size</dt>
           <dd>{{ formatBytes(job.outputBytes) }}</dd>
+        </div>
+        <div v-if="job.thumbnailPath">
+          <dt>Thumbnail</dt>
+          <dd>{{ job.thumbnailPath }}</dd>
         </div>
         <div v-if="job.errorMessage">
           <dt>Error</dt>
@@ -78,7 +91,7 @@
           :disabled="isBusy"
           @click="deleteHistory"
         >
-          Delete history
+          Delete video
         </AppButton>
       </div>
       <p

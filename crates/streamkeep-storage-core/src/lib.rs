@@ -37,6 +37,8 @@ pub struct DownloadJobRecord {
     pub output_path: Option<String>,
     pub output_uri: Option<String>,
     pub output_bytes: Option<u64>,
+    #[serde(default)]
+    pub thumbnail_path: Option<String>,
     pub error_message: Option<String>,
 }
 
@@ -75,6 +77,7 @@ impl DownloadJobRecord {
             output_path: None,
             output_uri: None,
             output_bytes: None,
+            thumbnail_path: None,
             error_message: None,
         }
     }
@@ -92,12 +95,14 @@ impl DownloadJobRecord {
         output_path: impl Into<String>,
         output_uri: impl Into<String>,
         output_bytes: u64,
+        thumbnail_path: Option<String>,
     ) {
         self.status = DownloadJobStatus::Done;
         self.progress = 100;
         self.output_path = Some(output_path.into());
         self.output_uri = Some(output_uri.into());
         self.output_bytes = Some(output_bytes);
+        self.thumbnail_path = thumbnail_path;
         self.error_message = None;
         self.updated_at = now_timestamp();
     }
