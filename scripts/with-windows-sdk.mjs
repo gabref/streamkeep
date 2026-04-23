@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 
@@ -13,6 +13,8 @@ if (!command) {
 const env = { ...process.env };
 
 if (process.platform === 'win32') {
+  prependPath(dirname(process.execPath));
+
   const rcDir = findWindowsResourceCompilerDirectory();
 
   if (rcDir) {
