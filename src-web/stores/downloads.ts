@@ -80,8 +80,9 @@ export const useDownloadsStore = defineStore('downloads', {
       }
 
       const previousStatus = job.status;
+      const nextProgress = progressPercent(progress);
       job.status = progress.status;
-      job.progress = progressPercent(progress) ?? job.progress;
+      job.progress = nextProgress === null ? job.progress : Math.max(job.progress, nextProgress);
       job.updatedAt = new Date().toISOString();
       if (progress.status === 'failed' && progress.message) {
         job.errorMessage = progress.message;

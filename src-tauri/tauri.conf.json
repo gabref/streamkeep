@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm run dev:web",
-    "beforeBuildCommand": "pnpm run prepare:android && pnpm run build-only"
+    "beforeDevCommand": "node scripts/run-package-script.mjs dev:web",
+    "beforeBuildCommand": "node scripts/run-package-script.mjs prepare:android && node scripts/run-package-script.mjs build-only"
   },
   "app": {
     "windows": [

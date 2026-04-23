@@ -8,13 +8,13 @@
     "onlyBuiltDependencies": ["esbuild"]
   },
   "scripts": {
-    "dev": "node scripts/with-windows-sdk.mjs tauri dev --config src-tauri/tauri.dev.conf.json",
+    "dev": "node scripts/with-windows-sdk.mjs tauri dev",
     "dev:web": "vite",
-    "dev:android": "pnpm run prepare:android && node scripts/with-windows-sdk.mjs tauri android dev --config src-tauri/tauri.dev.conf.json",
+    "dev:android": "node scripts/run-package-script.mjs prepare:android && node scripts/with-windows-sdk.mjs tauri android dev",
     "build": "run-p type-check build-only",
     "build-only": "vite build",
-    "build:android": "pnpm run prepare:android && node scripts/with-windows-sdk.mjs tauri android build --debug -t aarch64",
-    "build:android:apk": "pnpm run prepare:android && node scripts/with-windows-sdk.mjs tauri android build --apk --debug -t aarch64",
+    "build:android": "node scripts/run-package-script.mjs prepare:android && node scripts/with-windows-sdk.mjs tauri android build --debug -t aarch64",
+    "build:android:apk": "node scripts/run-package-script.mjs prepare:android && node scripts/with-windows-sdk.mjs tauri android build --apk --debug -t aarch64",
     "prepare:android": "node scripts/prepare-android.mjs",
     "tauri": "node scripts/with-windows-sdk.mjs tauri",
     "test": "run-p test:unit test:rust",

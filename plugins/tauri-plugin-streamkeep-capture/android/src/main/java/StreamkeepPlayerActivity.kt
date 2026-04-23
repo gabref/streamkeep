@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -45,6 +46,7 @@ class StreamkeepPlayerActivity : Activity() {
   private lateinit var detectedFileNameField: EditText
   private lateinit var detectedCancelButton: Button
   private lateinit var detectedDownloadButton: Button
+  private var detectedPaneKeyboardOffset = 0
   private var detectedPayload: JSObject? = null
   private var loading = false
   private var currentTitle: String? = null
@@ -141,6 +143,7 @@ class StreamkeepPlayerActivity : Activity() {
         ViewGroup.LayoutParams.MATCH_PARENT
       )
     }
+    installKeyboardAwareDetectedPaneLayout()
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
@@ -172,10 +175,10 @@ class StreamkeepPlayerActivity : Activity() {
       setPadding(dp(8), dp(4), dp(8), dp(8))
     }
 
-    controls.addView(toolbarButton("Back", "\u2039") { goBack() }, LinearLayout.LayoutParams(0, dp(40), 1f))
-    controls.addView(toolbarButton("Forward", "\u203a") { goForward() }, LinearLayout.LayoutParams(0, dp(40), 1f))
-    controls.addView(toolbarButton("Reload", "\u21bb") { reload() }, LinearLayout.LayoutParams(0, dp(40), 1f))
-    controls.addView(toolbarButton("Close", "\u2715") { finish() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+    controls.addView(iconToolbarButton("Back", "\u2039") { goBack() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+    controls.addView(iconToolbarButton("Forward", "\u203a") { goForward() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+    controls.addView(iconToolbarButton("Reload", "\u21bb") { reload() }, LinearLayout.LayoutParams(0, dp(40), 1f))
+    controls.addView(iconToolbarButton("Close", "\u2715") { finish() }, LinearLayout.LayoutParams(0, dp(40), 1f))
     root.addView(controls)
 
     val addressBar = LinearLayout(this).apply {
@@ -264,6 +267,24 @@ class StreamkeepPlayerActivity : Activity() {
         detectedPane.alpha = 1f
       }
       .start()
+  }
+
+  private fun installKeyboardAwareDetectedPaneLayout() {
+    rootFrame.viewTreeObserver.addOnGlobalLayoutListener {
+      val visibleFrame = Rect()
+      rootFrame.getWindowVisibleDisplayFrame(visibleFrame)
+      val rootHeight = rootFrame.rootView.height
+      val keyboardOffset = (rootHeight - visibleFrame.bottom).coerceAtLeast(0)
+      val threshold = (rootHeight * 0.12f).toInt()
+      val bottomMargin = if (keyboardOffset > threshold) keyboardOffset else 0
+
+      if (bottomMargin != detectedPaneKeyboardOffset && ::detectedPane.isInitialized) {
+        detectedPaneKeyboardOffset = bottomMargin
+        val params = detectedPane.layoutParams as FrameLayout.LayoutParams
+        params.bottomMargin = bottomMargin
+        detectedPane.layoutParams = params
+      }
+    }
   }
 
   @SuppressLint("SetJavaScriptEnabled")
@@ -428,6 +449,21 @@ class StreamkeepPlayerActivity : Activity() {
       setTextColor(Color.rgb(245, 247, 247))
       setTypeface(typeface, Typeface.BOLD)
       textSize = 11f
+      background = roundedBackground(Color.rgb(32, 40, 43), Color.rgb(51, 65, 69))
+      setOnClickListener { onClick() }
+    }
+  }
+
+  private fun iconToolbarButton(label: String, icon: String, onClick: () -> Unit): Button {
+    return Button(this).apply {
+      text = icon
+      contentDescription = label
+      isAllCaps = false
+      minWidth = dp(40)
+      minHeight = dp(40)
+      setTextColor(Color.rgb(245, 247, 247))
+      setTypeface(typeface, Typeface.BOLD)
+      textSize = 22f
       background = roundedBackground(Color.rgb(32, 40, 43), Color.rgb(51, 65, 69))
       setOnClickListener { onClick() }
     }

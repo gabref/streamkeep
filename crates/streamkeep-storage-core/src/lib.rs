@@ -85,7 +85,7 @@ impl DownloadJobRecord {
     pub fn apply_progress(&mut self, status: DownloadJobStatus, progress: Option<u8>) {
         self.status = status;
         if let Some(progress) = progress {
-            self.progress = progress.min(100);
+            self.progress = self.progress.max(progress.min(100));
         }
         self.updated_at = now_timestamp();
     }
@@ -174,5 +174,25 @@ mod tests {
             history.jobs[0].error_message.as_deref(),
             Some("network error")
         );
+    }
+
+    #[test]
+    fn apply_progress_never_moves_backward() {
+        let mut record = DownloadJobRecord::queued(QueuedDownloadJob {
+            title: "Title".to_owned(),
+            output_name: "Title.mp4".to_owned(),
+            page_url: "https://example.test/watch".to_owned(),
+            master_url: "https://example.test/master.m3u8".to_owned(),
+            media_playlist_url: None,
+            referer: None,
+            user_agent: None,
+            cookies: None,
+            quality: "Best available".to_owned(),
+        });
+
+        record.apply_progress(DownloadJobStatus::Downloading, Some(42));
+        record.apply_progress(DownloadJobStatus::Downloading, Some(38));
+
+        assert_eq!(record.progress, 42);
     }
 }
