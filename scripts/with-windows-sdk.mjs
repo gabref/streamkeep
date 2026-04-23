@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
 
 const [, , command, ...args] = process.argv;
 
@@ -16,14 +17,19 @@ if (process.platform === 'win32') {
 
   if (rcDir) {
     env.RC_X86_64_PC_WINDOWS_MSVC = join(rcDir, 'rc.exe');
-    env.PATH = `${rcDir};${env.PATH ?? ''}`;
+    prependPath(rcDir);
+  }
+
+  const cargoBin = findCargoBinDirectory();
+  if (cargoBin) {
+    prependPath(cargoBin);
   }
 
   if (env.JAVA_HOME) {
     const javaBin = join(env.JAVA_HOME, 'bin');
 
     if (existsSync(javaBin)) {
-      env.PATH = `${javaBin};${env.PATH ?? ''}`;
+      prependPath(javaBin);
     }
   }
 }
@@ -60,6 +66,31 @@ function resolveCommand(command, args) {
   }
 
   return { executable: command, args };
+}
+
+function prependPath(directory) {
+  const currentPath = env.PATH ?? '';
+  const entries = currentPath.split(';').filter(Boolean);
+  const alreadyPresent = entries.some((entry) => entry.toLowerCase() === directory.toLowerCase());
+
+  if (!alreadyPresent) {
+    env.PATH = `${directory};${currentPath}`;
+  }
+}
+
+function findCargoBinDirectory() {
+  const candidates = [
+    process.env.CARGO_HOME ? join(process.env.CARGO_HOME, 'bin') : null,
+    join(homedir(), '.cargo', 'bin'),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, 'cargo.exe')) || existsSync(join(candidate, 'cargo'))) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function findWindowsResourceCompilerDirectory() {
