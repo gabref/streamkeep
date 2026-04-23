@@ -4345,7 +4345,11 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
+ "time",
+ "tracing",
  "ts-to-mp4",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]

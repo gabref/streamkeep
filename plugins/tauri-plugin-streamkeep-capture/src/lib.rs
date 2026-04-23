@@ -1,14 +1,30 @@
 #[cfg(mobile)]
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use std::collections::HashMap;
 #[cfg(not(mobile))]
 use std::{fs, path::PathBuf};
+#[cfg(target_os = "windows")]
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 use tauri::{
-    Manager, Runtime,
+    Emitter, Manager, Runtime,
     plugin::{Builder, TauriPlugin},
 };
 #[cfg(not(mobile))]
-use tauri::{Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+#[cfg(target_os = "windows")]
+use tracing::{debug, error, info, warn};
+#[cfg(target_os = "windows")]
+use webview2_com::{
+    Microsoft::Web::WebView2::Win32::COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
+    WebResourceRequestedEventHandler, take_pwstr,
+};
+#[cfg(target_os = "windows")]
+use windows::core::{HSTRING, PWSTR};
 
 #[cfg(mobile)]
 mod mobile;
@@ -244,6 +260,12 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
 #[cfg(not(mobile))]
 const DESKTOP_PLAYER_LABEL: &str = "streamkeep-player";
+#[cfg(target_os = "windows")]
+const DESKTOP_DEBOUNCE_WINDOW: Duration = Duration::from_secs(30);
+#[cfg(target_os = "windows")]
+const REQUEST_SEEN_EVENT: &str = "capture:request-seen";
+#[cfg(target_os = "windows")]
+const MASTER_DETECTED_EVENT: &str = "capture:master-detected";
 
 #[cfg(not(mobile))]
 impl<R: Runtime> StreamkeepCapture<R> {
@@ -256,12 +278,15 @@ impl<R: Runtime> StreamkeepCapture<R> {
             return Ok(self.desktop_player_state());
         }
 
-        WebviewWindowBuilder::new(&self.app, DESKTOP_PLAYER_LABEL, WebviewUrl::External(url))
-            .title("Streamkeep Player")
-            .inner_size(1120.0, 760.0)
-            .resizable(true)
-            .build()
-            .map_err(|error| error.to_string())?;
+        let window =
+            WebviewWindowBuilder::new(&self.app, DESKTOP_PLAYER_LABEL, WebviewUrl::External(url))
+                .title("Streamkeep Player")
+                .inner_size(1120.0, 760.0)
+                .resizable(true)
+                .build()
+                .map_err(|error| error.to_string())?;
+        #[cfg(target_os = "windows")]
+        attach_windows_hls_observer(&window, self.app.clone())?;
         Ok(self.desktop_player_state())
     }
 
@@ -313,6 +338,195 @@ impl<R: Runtime> StreamkeepCapture<R> {
             can_go_forward: false,
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn attach_windows_hls_observer<R: Runtime>(
+    window: &WebviewWindow<R>,
+    app: tauri::AppHandle<R>,
+) -> Result<(), String> {
+    let seen_requests = Arc::new(Mutex::new(HashMap::<String, Instant>::new()));
+    window
+        .with_webview(move |webview| {
+            let seen_requests = Arc::clone(&seen_requests);
+            let app_for_event = app.clone();
+
+            unsafe {
+                let webview2 = match webview.controller().CoreWebView2() {
+                    Ok(webview2) => webview2,
+                    Err(error) => {
+                        error!(?error, "failed to access Windows WebView2 instance");
+                        return;
+                    }
+                };
+
+                let filter = HSTRING::from("*");
+                if let Err(error) =
+                    webview2.AddWebResourceRequestedFilter(&filter, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL)
+                {
+                    error!(?error, "failed to register Windows HLS request filter");
+                    return;
+                }
+
+                let handler = WebResourceRequestedEventHandler::create(Box::new(move |_, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+
+                    let request = args.Request()?;
+                    let request_url = {
+                        let mut uri = PWSTR::null();
+                        request.Uri(&mut uri)?;
+                        take_pwstr(uri)
+                    };
+
+                    let Some(request_type) = classify_hls_request(&request_url) else {
+                        return Ok(());
+                    };
+
+                    if is_recent_duplicate(&seen_requests, request_type, &request_url) {
+                        debug!(%request_url, %request_type, "ignored duplicate Windows HLS request");
+                        return Ok(());
+                    }
+
+                    let headers = request.Headers().ok();
+                    let referer = headers
+                        .as_ref()
+                        .and_then(|headers| webview_header(headers, "Referer").or_else(|| webview_header(headers, "Referrer")));
+                    let user_agent = headers
+                        .as_ref()
+                        .and_then(|headers| webview_header(headers, "User-Agent"));
+                    let cookies = headers
+                        .as_ref()
+                        .and_then(|headers| webview_header(headers, "Cookie"));
+                    let player_state = app_for_event
+                        .get_webview_window(DESKTOP_PLAYER_LABEL)
+                        .map(|window| {
+                            (
+                                window.url().ok().map(|url| url.to_string()),
+                                window.title().ok(),
+                            )
+                        });
+                    let (page_url, page_title) = player_state.unwrap_or((None, None));
+                    let master_url = if request_type == "master" {
+                        Some(request_url.clone())
+                    } else {
+                        None
+                    };
+                    let referer = referer.or_else(|| page_url.clone());
+                    let payload = serde_json::json!({
+                        "url": request_url.clone(),
+                        "requestUrl": request_url.clone(),
+                        "masterUrl": master_url,
+                        "pageUrl": page_url.clone(),
+                        "referer": referer,
+                        "userAgent": user_agent,
+                        "cookies": cookies,
+                        "pageTitle": page_title.clone(),
+                        "documentTitle": page_title.clone(),
+                        "openGraphTitle": null,
+                        "headingTitle": null,
+                        "titleSuggestion": page_title,
+                        "detectedAt": current_timestamp(),
+                        "source": "webview",
+                        "requestType": request_type,
+                        "confidence": if request_type == "master" { "strong" } else { "candidate" },
+                    });
+
+                    info!(
+                        url = payload["url"].as_str().unwrap_or_default(),
+                        request_type = payload["requestType"].as_str().unwrap_or_default(),
+                        "detected Windows HLS request"
+                    );
+                    if let Err(error) = app_for_event.emit(REQUEST_SEEN_EVENT, payload.clone()) {
+                        warn!(?error, "failed to emit Windows HLS request event");
+                    }
+
+                    if request_type == "master" || request_type == "playlist" {
+                        if let Err(error) = app_for_event.emit(MASTER_DETECTED_EVENT, payload) {
+                            warn!(?error, "failed to emit Windows HLS detection event");
+                        }
+                        if let Some(main_window) = app_for_event.get_webview_window("main") {
+                            let _ = main_window.show();
+                            let _ = main_window.set_focus();
+                        }
+                    }
+
+                    Ok(())
+                }));
+                let mut token = 0_i64;
+                if let Err(error) = webview2.add_WebResourceRequested(&handler, &mut token) {
+                    error!(?error, "failed to attach Windows HLS request handler");
+                    return;
+                }
+
+                info!(token, "attached Windows HLS request observer");
+            }
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn classify_hls_request(url: &str) -> Option<&'static str> {
+    let lower_url = url.to_ascii_lowercase();
+    if lower_url.contains("master.m3u8") {
+        return Some("master");
+    }
+    if lower_url.contains(".m3u8") {
+        return Some("playlist");
+    }
+    if lower_url.contains(".ts") {
+        return Some("segment");
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn is_recent_duplicate(
+    seen_requests: &Arc<Mutex<HashMap<String, Instant>>>,
+    request_type: &str,
+    url: &str,
+) -> bool {
+    let now = Instant::now();
+    let key = format!("{request_type}:{url}");
+    let Ok(mut seen_requests) = seen_requests.lock() else {
+        return false;
+    };
+    seen_requests.retain(|_, seen_at| now.duration_since(*seen_at) < DESKTOP_DEBOUNCE_WINDOW);
+    if let Some(seen_at) = seen_requests.get(&key)
+        && now.duration_since(*seen_at) < DESKTOP_DEBOUNCE_WINDOW
+    {
+        return true;
+    }
+    seen_requests.insert(key, now);
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn webview_header(
+    headers: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2HttpRequestHeaders,
+    name: &str,
+) -> Option<String> {
+    unsafe {
+        let mut value = PWSTR::null();
+        if headers.GetHeader(&HSTRING::from(name), &mut value).is_err() {
+            return None;
+        }
+        let value = take_pwstr(value);
+        let value = value.trim();
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_owned())
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn current_timestamp() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
 }
 
 #[cfg(not(mobile))]

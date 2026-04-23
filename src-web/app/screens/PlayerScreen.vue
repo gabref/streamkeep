@@ -302,10 +302,7 @@ async function confirmDownload(fileNameStem: string, qualityId: string) {
 
   try {
     const selectedQuality = intent.stream.qualities.find((quality) => quality.id === qualityId);
-    const detectedMediaPlaylist =
-      lastRequest.value?.requestType === 'playlist' && /\.m3u8($|\?)/i.test(lastRequest.value.url)
-        ? lastRequest.value.url
-        : null;
+    const detectedMediaPlaylist = firstDetectedMediaPlaylist();
     latestDownloadResult.value = await startDownload({
       masterUrl: intent.stream.masterUrl,
       mediaPlaylistUrl: selectedQuality?.mediaPlaylistUrl ?? detectedMediaPlaylist,
@@ -407,6 +404,15 @@ function applyDetectedPayload(payload: CaptureRequestPayload | CaptureDownloadRe
   lastDetectedMaster.value = payload;
   persistPlayerUrl(payload.pageUrl);
   detection.registerDetectedPayload(payload);
+}
+
+function firstDetectedMediaPlaylist(): string | null {
+  for (const payload of [lastDetectedMaster.value, lastRequest.value]) {
+    if (payload?.requestType === 'playlist' && /\.m3u8($|\?)/i.test(payload.url)) {
+      return payload.url;
+    }
+  }
+  return null;
 }
 
 function readLastPlayerUrl(): string {
