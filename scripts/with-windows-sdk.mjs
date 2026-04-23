@@ -28,13 +28,11 @@ if (process.platform === 'win32') {
   }
 }
 
-const executable = process.platform === 'win32' && command === 'tauri' ? 'pnpm' : command;
-const executableArgs =
-  process.platform === 'win32' && command === 'tauri' ? ['exec', 'tauri', ...args] : args;
+const resolvedCommand = resolveCommand(command, args);
 
-const child = spawn(executable, executableArgs, {
+const child = spawn(resolvedCommand.executable, resolvedCommand.args, {
   env,
-  shell: process.platform === 'win32' && executable === 'pnpm',
+  shell: false,
   stdio: 'inherit',
 });
 
@@ -46,6 +44,23 @@ child.on('exit', (code, signal) => {
 
   process.exit(code ?? 0);
 });
+
+function resolveCommand(command, args) {
+  if (command !== 'tauri') {
+    return { executable: command, args };
+  }
+
+  const localCli = join(process.cwd(), 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
+
+  if (existsSync(localCli)) {
+    return {
+      executable: process.execPath,
+      args: [localCli, ...args],
+    };
+  }
+
+  return { executable: command, args };
+}
 
 function findWindowsResourceCompilerDirectory() {
   const sdkRoot = 'C:\\Program Files (x86)\\Windows Kits\\10\\bin';
