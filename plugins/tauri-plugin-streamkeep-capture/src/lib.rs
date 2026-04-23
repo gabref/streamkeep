@@ -10,12 +10,16 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+#[cfg(target_os = "windows")]
+use tauri::Emitter;
+#[cfg(target_os = "windows")]
+use tauri::WebviewWindow;
 use tauri::{
-    Emitter, Manager, Runtime,
+    Manager, Runtime,
     plugin::{Builder, TauriPlugin},
 };
 #[cfg(not(mobile))]
-use tauri::{Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Url, WebviewUrl, WebviewWindowBuilder};
 #[cfg(target_os = "windows")]
 use tracing::{debug, error, info, warn};
 #[cfg(target_os = "windows")]
@@ -278,15 +282,20 @@ impl<R: Runtime> StreamkeepCapture<R> {
             return Ok(self.desktop_player_state());
         }
 
-        let window =
+        let player_window =
             WebviewWindowBuilder::new(&self.app, DESKTOP_PLAYER_LABEL, WebviewUrl::External(url))
                 .title("Streamkeep Player")
                 .inner_size(1120.0, 760.0)
-                .resizable(true)
-                .build()
-                .map_err(|error| error.to_string())?;
+                .resizable(true);
         #[cfg(target_os = "windows")]
-        attach_windows_hls_observer(&window, self.app.clone())?;
+        {
+            let window = player_window.build().map_err(|error| error.to_string())?;
+            attach_windows_hls_observer(&window, self.app.clone())?;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            player_window.build().map_err(|error| error.to_string())?;
+        }
         Ok(self.desktop_player_state())
     }
 
