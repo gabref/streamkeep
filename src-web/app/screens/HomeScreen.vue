@@ -64,12 +64,6 @@
           class="jobRow"
           :to="`/downloads/${job.id}`"
         >
-          <img
-            v-if="job.thumbnailUrl"
-            alt=""
-            class="jobRow__thumbnail"
-            :src="job.thumbnailUrl"
-          >
           <span>
             <strong>{{ job.title }}</strong>
             <small>{{ job.outputName }}</small>

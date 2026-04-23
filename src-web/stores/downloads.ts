@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import {
   listDownloadHistory,
   type DownloadJobRecord,
@@ -28,8 +27,6 @@ export type DownloadJob = {
   outputPath?: string | null;
   outputUri?: string | null;
   outputBytes?: number | null;
-  thumbnailPath?: string | null;
-  thumbnailUrl?: string | null;
 };
 
 export const useDownloadsStore = defineStore('downloads', {
@@ -128,15 +125,17 @@ function recordToJob(record: DownloadJobRecord): DownloadJob {
     outputPath: record.outputPath,
     outputUri: record.outputUri,
     outputBytes: record.outputBytes,
-    thumbnailPath: record.thumbnailPath,
-    thumbnailUrl: record.thumbnailPath ? convertFileSrc(record.thumbnailPath) : null,
     errorMessage: record.errorMessage,
   };
 }
 
 function progressPercent(progress: DownloadProgressPayload): number | null {
+  if (progress.status === 'done') {
+    return 100;
+  }
+
   if (progress.totalBytes && progress.totalBytes > 0) {
-    return Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes);
+    return Math.min(99, Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes));
   }
   if (progress.totalSegments && progress.totalSegments > 0) {
     const currentSegmentProgress =
@@ -145,7 +144,10 @@ function progressPercent(progress: DownloadProgressPayload): number | null {
           progress.currentSegmentTotalBytes
         : 0;
     const completedSegments = Math.min(progress.completedSegments, progress.totalSegments);
-    return Math.floor(((completedSegments + currentSegmentProgress) * 100) / progress.totalSegments);
+    return Math.min(
+      99,
+      Math.floor(((completedSegments + currentSegmentProgress) * 100) / progress.totalSegments)
+    );
   }
   return null;
 }

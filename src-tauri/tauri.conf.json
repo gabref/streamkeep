@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "Streamkeep",
-        "width": 420,
+        "width": 1120,
         "height": 760,
+        "minWidth": 900,
+        "minHeight": 620,
         "center": true,
         "resizable": true,
         "fullscreen": false

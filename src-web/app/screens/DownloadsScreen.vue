@@ -22,12 +22,6 @@
           class="jobCard"
           :to="`/downloads/${job.id}`"
         >
-          <img
-            v-if="job.thumbnailUrl"
-            alt=""
-            class="jobCard__thumbnail"
-            :src="job.thumbnailUrl"
-          >
           <span class="jobCard__title">{{ job.title }}</span>
           <span class="muted">{{ job.outputName }}</span>
           <div class="progressLine">
@@ -59,12 +53,6 @@
           class="jobRow"
           :to="`/downloads/${job.id}`"
         >
-          <img
-            v-if="job.thumbnailUrl"
-            alt=""
-            class="jobRow__thumbnail"
-            :src="job.thumbnailUrl"
-          >
           <span>
             <strong>{{ job.title }}</strong>
             <small>{{ job.outputName }}</small>
@@ -88,12 +76,6 @@
           class="jobRow"
           :to="`/downloads/${job.id}`"
         >
-          <img
-            v-if="job.thumbnailUrl"
-            alt=""
-            class="jobRow__thumbnail"
-            :src="job.thumbnailUrl"
-          >
           <span>
             <strong>{{ job.title }}</strong>
             <small>{{ job.errorMessage }}</small>

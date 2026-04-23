@@ -123,7 +123,9 @@ impl DownloadProgress {
         if let Some(total_bytes) = self.total_bytes
             && total_bytes > 0
         {
-            return Some(((self.downloaded_bytes.min(total_bytes) * 100) / total_bytes) as u8);
+            return Some(self.cap_percent(
+                ((self.downloaded_bytes.min(total_bytes) * 100) / total_bytes) as u8,
+            ));
         }
 
         let total_segments = self.total_segments?;
@@ -141,7 +143,17 @@ impl DownloadProgress {
             _ => 0.0,
         };
         let completed = self.completed_segments.min(total_segments) as f64;
-        Some((((completed + current_segment_progress) * 100.0) / total_segments as f64) as u8)
+        Some(self.cap_percent(
+            (((completed + current_segment_progress) * 100.0) / total_segments as f64) as u8,
+        ))
+    }
+
+    fn cap_percent(&self, percent: u8) -> u8 {
+        if self.status == DownloadStatus::Done {
+            percent.min(100)
+        } else {
+            percent.min(99)
+        }
     }
 }
 
@@ -585,7 +597,7 @@ mod tests {
     use super::{DownloadProgress, DownloadStatus, parse_media_playlist};
 
     #[test]
-    fn percent_caps_completed_segments_at_total() {
+    fn percent_stays_below_done_until_complete() {
         let progress = DownloadProgress {
             status: DownloadStatus::Downloading,
             completed_segments: 12,
@@ -595,6 +607,23 @@ mod tests {
             current_segment_total_bytes: None,
             downloaded_bytes: 0,
             total_bytes: None,
+            message: None,
+        };
+
+        assert_eq!(progress.percent(), Some(99));
+    }
+
+    #[test]
+    fn percent_reaches_100_when_done() {
+        let progress = DownloadProgress {
+            status: DownloadStatus::Done,
+            completed_segments: 10,
+            total_segments: Some(10),
+            current_segment_index: None,
+            current_segment_downloaded_bytes: None,
+            current_segment_total_bytes: None,
+            downloaded_bytes: 100,
+            total_bytes: Some(100),
             message: None,
         };
 

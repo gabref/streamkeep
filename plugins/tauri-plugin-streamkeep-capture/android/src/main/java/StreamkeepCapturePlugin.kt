@@ -1,6 +1,7 @@
 package app.streamkeep.capture
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import app.tauri.annotation.Command
@@ -31,12 +32,6 @@ class RemuxToMp4Args {
 class PublishToDownloadsArgs {
   lateinit var inputPath: String
   lateinit var displayName: String
-}
-
-@InvokeArg
-class CreateThumbnailArgs {
-  lateinit var inputPath: String
-  lateinit var outputPath: String
 }
 
 @InvokeArg
@@ -171,26 +166,6 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   }
 
   @Command
-  fun createThumbnail(invoke: Invoke) {
-    try {
-      val args = invoke.parseArgs(CreateThumbnailArgs::class.java)
-      ioExecutor.execute {
-        try {
-          val result = StreamkeepThumbnailer.createThumbnail(args.inputPath, args.outputPath)
-          val payload = JSObject()
-          payload.put("outputPath", result.outputPath)
-          payload.put("outputBytes", result.outputBytes)
-          activity.runOnUiThread { invoke.resolve(payload) }
-        } catch (ex: Exception) {
-          activity.runOnUiThread { invoke.reject(ex.message ?: "Failed to create Streamkeep thumbnail") }
-        }
-      }
-    } catch (ex: Exception) {
-      invoke.reject(ex.message ?: "Failed to create Streamkeep thumbnail")
-    }
-  }
-
-  @Command
   fun deletePublishedDownload(invoke: Invoke) {
     try {
       val args = invoke.parseArgs(DeletePublishedDownloadArgs::class.java)
@@ -231,9 +206,20 @@ class StreamkeepCapturePlugin(private val activity: Activity) : Plugin(activity)
   fun openUri(invoke: Invoke) {
     try {
       val args = invoke.parseArgs(OpenUriArgs::class.java)
+      val uri = Uri.parse(args.contentUri)
+      val mimeType = args.mimeType ?: "video/*"
       val intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(Uri.parse(args.contentUri), args.mimeType ?: "video/*")
+        setDataAndType(uri, mimeType)
+        clipData = ClipData.newUri(activity.contentResolver, "Streamkeep video", uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("video/mp4", "video/*"))
+      }
+      for (target in activity.packageManager.queryIntentActivities(intent, 0)) {
+        activity.grantUriPermission(
+          target.activityInfo.packageName,
+          uri,
+          Intent.FLAG_GRANT_READ_URI_PERMISSION
+        )
       }
       activity.startActivity(Intent.createChooser(intent, "Open video"))
       invoke.resolve()

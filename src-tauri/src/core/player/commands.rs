@@ -4,7 +4,7 @@ use tauri_plugin_streamkeep_capture::{
 };
 
 #[tauri::command]
-pub fn open_player_command<R: Runtime>(
+pub async fn open_player_command<R: Runtime>(
     app: AppHandle<R>,
     url: Option<String>,
 ) -> Result<PlayerState, String> {
@@ -33,7 +33,7 @@ pub fn player_reload_command<R: Runtime>(app: AppHandle<R>) -> Result<PlayerStat
 }
 
 #[tauri::command]
-pub fn player_load_url_command<R: Runtime>(
+pub async fn player_load_url_command<R: Runtime>(
     app: AppHandle<R>,
     url: String,
 ) -> Result<PlayerState, String> {

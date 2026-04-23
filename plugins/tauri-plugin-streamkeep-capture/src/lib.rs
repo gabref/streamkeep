@@ -1,10 +1,14 @@
 #[cfg(mobile)]
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+#[cfg(not(mobile))]
+use std::{fs, path::PathBuf};
 use tauri::{
     Manager, Runtime,
     plugin::{Builder, TauriPlugin},
 };
+#[cfg(not(mobile))]
+use tauri::{Url, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(mobile)]
 mod mobile;
@@ -69,20 +73,6 @@ pub struct PublishToDownloadsResult {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateThumbnailRequest {
-    pub input_path: String,
-    pub output_path: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateThumbnailResult {
-    pub output_path: String,
-    pub output_bytes: u64,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DeletePublishedDownloadRequest {
     pub content_uri: String,
 }
@@ -94,26 +84,11 @@ pub struct OpenUriRequest {
     pub mime_type: Option<String>,
 }
 
-#[cfg(not(mobile))]
-impl PlayerState {
-    fn unsupported() -> Self {
-        Self {
-            supported: false,
-            visible: false,
-            loading: false,
-            url: None,
-            title: None,
-            can_go_back: false,
-            can_go_forward: false,
-        }
-    }
-}
-
 pub struct StreamkeepCapture<R: Runtime> {
     #[cfg(mobile)]
     mobile_plugin_handle: tauri::plugin::PluginHandle<R>,
     #[cfg(not(mobile))]
-    _marker: std::marker::PhantomData<fn() -> R>,
+    app: tauri::AppHandle<R>,
 }
 
 impl<R: Runtime> StreamkeepCapture<R> {
@@ -125,8 +100,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            let _ = request;
-            Ok(PlayerState::unsupported())
+            self.open_desktop_player(request)
         }
     }
 
@@ -138,7 +112,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            Ok(PlayerState::unsupported())
+            Ok(self.desktop_player_state())
         }
     }
 
@@ -162,8 +136,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            let _ = request;
-            Ok(PlayerState::unsupported())
+            self.navigate_desktop_player(&request.url)
         }
     }
 
@@ -175,8 +148,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            let _ = request;
-            Err("Streamkeep MP4 remuxing is available on Android".to_owned())
+            remux_to_mp4_on_desktop(&request)
         }
     }
 
@@ -191,24 +163,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            let _ = request;
-            Err("Publishing Streamkeep downloads is available on Android".to_owned())
-        }
-    }
-
-    pub fn create_thumbnail(
-        &self,
-        request: CreateThumbnailRequest,
-    ) -> Result<CreateThumbnailResult, String> {
-        #[cfg(mobile)]
-        {
-            return self.run_mobile("createThumbnail", request);
-        }
-
-        #[cfg(not(mobile))]
-        {
-            let _ = request;
-            Err("Streamkeep thumbnail extraction is available on Android".to_owned())
+            publish_to_desktop_file(&request)
         }
     }
 
@@ -223,8 +178,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            let _ = request;
-            Ok(())
+            delete_desktop_file(&request.content_uri)
         }
     }
 
@@ -272,8 +226,7 @@ impl<R: Runtime> StreamkeepCapture<R> {
 
         #[cfg(not(mobile))]
         {
-            let _ = command;
-            Ok(PlayerState::unsupported())
+            self.run_desktop_player_command(command)
         }
     }
 
@@ -290,15 +243,153 @@ impl<R: Runtime> StreamkeepCapture<R> {
 }
 
 #[cfg(not(mobile))]
-fn open_uri_on_desktop(value: &str) -> Result<(), String> {
-    let target = value
-        .strip_prefix("file://")
-        .unwrap_or(value)
-        .trim()
-        .to_owned();
-    if target.is_empty() {
-        return Err("No Streamkeep file path was provided".to_owned());
+const DESKTOP_PLAYER_LABEL: &str = "streamkeep-player";
+
+#[cfg(not(mobile))]
+impl<R: Runtime> StreamkeepCapture<R> {
+    fn open_desktop_player(&self, request: OpenPlayerRequest) -> Result<PlayerState, String> {
+        let url = normalize_desktop_url(request.url.as_deref())?;
+        if let Some(window) = self.app.get_webview_window(DESKTOP_PLAYER_LABEL) {
+            window.navigate(url).map_err(|error| error.to_string())?;
+            let _ = window.show();
+            let _ = window.set_focus();
+            return Ok(self.desktop_player_state());
+        }
+
+        WebviewWindowBuilder::new(&self.app, DESKTOP_PLAYER_LABEL, WebviewUrl::External(url))
+            .title("Streamkeep Player")
+            .inner_size(1120.0, 760.0)
+            .resizable(true)
+            .build()
+            .map_err(|error| error.to_string())?;
+        Ok(self.desktop_player_state())
     }
+
+    fn navigate_desktop_player(&self, value: &str) -> Result<PlayerState, String> {
+        let url = normalize_desktop_url(Some(value))?;
+        if let Some(window) = self.app.get_webview_window(DESKTOP_PLAYER_LABEL) {
+            window.navigate(url).map_err(|error| error.to_string())?;
+            let _ = window.show();
+            let _ = window.set_focus();
+            return Ok(self.desktop_player_state());
+        }
+
+        self.open_desktop_player(OpenPlayerRequest {
+            url: Some(value.to_owned()),
+        })
+    }
+
+    fn run_desktop_player_command(&self, command: &str) -> Result<PlayerState, String> {
+        if let Some(window) = self.app.get_webview_window(DESKTOP_PLAYER_LABEL) {
+            match command {
+                "reload" => window.reload().map_err(|error| error.to_string())?,
+                "goBack" | "goForward" => {}
+                _ => {}
+            }
+        }
+        Ok(self.desktop_player_state())
+    }
+
+    fn desktop_player_state(&self) -> PlayerState {
+        if let Some(window) = self.app.get_webview_window(DESKTOP_PLAYER_LABEL) {
+            return PlayerState {
+                supported: true,
+                visible: window.is_visible().unwrap_or(true),
+                loading: false,
+                url: window.url().ok().map(|url| url.to_string()),
+                title: window.title().ok(),
+                can_go_back: false,
+                can_go_forward: false,
+            };
+        }
+
+        PlayerState {
+            supported: true,
+            visible: false,
+            loading: false,
+            url: None,
+            title: None,
+            can_go_back: false,
+            can_go_forward: false,
+        }
+    }
+}
+
+#[cfg(not(mobile))]
+fn normalize_desktop_url(value: Option<&str>) -> Result<Url, String> {
+    let trimmed = value.unwrap_or("https://example.com").trim();
+    let with_scheme = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_owned()
+    } else {
+        format!("https://{trimmed}")
+    };
+    Url::parse(&with_scheme).map_err(|error| format!("Invalid Streamkeep player URL: {error}"))
+}
+
+#[cfg(not(mobile))]
+fn remux_to_mp4_on_desktop(request: &RemuxToMp4Request) -> Result<RemuxToMp4Result, String> {
+    ts_to_mp4::remux_file(&request.input_path, &request.output_path)
+        .map_err(|error| format!("Failed to remux MPEG-TS to MP4: {error}"))?;
+
+    let output_bytes = fs::metadata(&request.output_path)
+        .map_err(|error| format!("Failed to read Streamkeep MP4 metadata: {error}"))?
+        .len();
+
+    Ok(RemuxToMp4Result {
+        output_path: request.output_path.clone(),
+        track_count: 0,
+        output_bytes,
+    })
+}
+
+#[cfg(not(mobile))]
+fn publish_to_desktop_file(
+    request: &PublishToDownloadsRequest,
+) -> Result<PublishToDownloadsResult, String> {
+    let input_path = PathBuf::from(&request.input_path);
+    let display_name = input_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            PathBuf::from(&request.display_name)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or("Streamkeep capture.mp4")
+                .to_owned()
+        });
+    let relative_path = input_path
+        .parent()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let output_bytes = fs::metadata(&input_path)
+        .map_err(|error| format!("Failed to read Streamkeep MP4 metadata: {error}"))?
+        .len();
+
+    Ok(PublishToDownloadsResult {
+        content_uri: format!("file://{}", input_path.to_string_lossy()),
+        display_name,
+        relative_path,
+        output_bytes,
+    })
+}
+
+#[cfg(not(mobile))]
+fn delete_desktop_file(value: &str) -> Result<(), String> {
+    let target = desktop_path_from_uri(value)?;
+    if target.exists() {
+        fs::remove_file(&target)
+            .map_err(|error| format!("Failed to delete Streamkeep file: {error}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(mobile))]
+fn open_uri_on_desktop(value: &str) -> Result<(), String> {
+    let target = desktop_path_from_uri(value)?;
+    let target = target.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]
     let mut command = {
@@ -327,6 +418,15 @@ fn open_uri_on_desktop(value: &str) -> Result<(), String> {
         .map_err(|error| format!("Failed to open Streamkeep file: {error}"))
 }
 
+#[cfg(not(mobile))]
+fn desktop_path_from_uri(value: &str) -> Result<PathBuf, String> {
+    let target = value.strip_prefix("file://").unwrap_or(value).trim();
+    if target.is_empty() {
+        return Err("No Streamkeep file path was provided".to_owned());
+    }
+    Ok(PathBuf::from(target))
+}
+
 pub trait StreamkeepCaptureExt<R: Runtime> {
     fn streamkeep_capture(&self) -> &StreamkeepCapture<R>;
 }
@@ -349,7 +449,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             #[cfg(not(mobile))]
             {
                 app.manage(StreamkeepCapture {
-                    _marker: std::marker::PhantomData::<fn() -> R>,
+                    app: app.app_handle().clone(),
                 });
             }
 

@@ -66,6 +66,58 @@
       </div>
     </section>
 
+    <section
+      v-if="showDesktopCapture"
+      class="sectionBlock"
+    >
+      <div class="sectionTitleRow">
+        <h2>Desktop capture</h2>
+        <StatusChip>Windows</StatusChip>
+      </div>
+      <form
+        class="manualCapture"
+        @submit.prevent="registerManualStream"
+      >
+        <label class="fieldGroup">
+          <span>Master playlist URL</span>
+          <input
+            v-model="manualMasterUrl"
+            class="field"
+            inputmode="url"
+            spellcheck="false"
+            type="url"
+          >
+        </label>
+        <label class="fieldGroup">
+          <span>Page URL</span>
+          <input
+            v-model="manualPageUrl"
+            class="field"
+            inputmode="url"
+            spellcheck="false"
+            type="url"
+          >
+        </label>
+        <label class="fieldGroup">
+          <span>Title</span>
+          <input
+            v-model="manualTitle"
+            class="field"
+            type="text"
+          >
+        </label>
+        <div class="actionRow actionRow--end">
+          <AppButton
+            icon="download"
+            type="submit"
+            variant="primary"
+          >
+            Detect
+          </AppButton>
+        </div>
+      </form>
+    </section>
+
     <DetectionDialog
       v-if="pendingStream"
       :stream="pendingStream"
@@ -110,6 +162,9 @@ const lastRequest = ref<CaptureRequestPayload | null>(null);
 const lastDetectedMaster = ref<CaptureRequestPayload | null>(null);
 const activeDownloadProgress = ref<DownloadProgressPayload | null>(null);
 const latestDownloadResult = ref<StartDownloadResult | null>(null);
+const manualMasterUrl = ref('');
+const manualPageUrl = ref('');
+const manualTitle = ref('');
 const errorMessage = ref<string | null>(null);
 const isBusy = ref(false);
 const listenerCleanup = ref<Array<() => Promise<void>>>([]);
@@ -147,6 +202,8 @@ const detectionTone = computed<'default' | 'success'>(() => {
   }
   return 'default';
 });
+
+const showDesktopCapture = computed(() => !/Android/i.test(globalThis.navigator.userAgent));
 
 const lastRequestLabel = computed(() => {
   if (!lastRequest.value) {
@@ -280,6 +337,35 @@ async function confirmDownload(fileNameStem: string, qualityId: string) {
   }
 }
 
+function registerManualStream() {
+  const masterUrl = manualMasterUrl.value.trim();
+  if (!masterUrl) {
+    errorMessage.value = 'Enter a master.m3u8 URL';
+    return;
+  }
+
+  const pageUrl = manualPageUrl.value.trim() || targetUrl.value.trim() || masterUrl;
+  const payload: CaptureRequestPayload = {
+    url: masterUrl,
+    requestUrl: masterUrl,
+    masterUrl,
+    pageUrl,
+    referer: pageUrl,
+    userAgent: globalThis.navigator.userAgent,
+    cookies: null,
+    pageTitle: manualTitle.value.trim() || null,
+    documentTitle: manualTitle.value.trim() || null,
+    openGraphTitle: null,
+    headingTitle: null,
+    titleSuggestion: manualTitle.value.trim() || null,
+    detectedAt: new Date().toISOString(),
+    source: 'manual',
+    requestType: 'master',
+    confidence: 'strong',
+  };
+  applyDetectedPayload(payload);
+}
+
 async function runPlayerCommand(command: () => Promise<PlayerState>) {
   isBusy.value = true;
   errorMessage.value = null;
@@ -294,8 +380,12 @@ async function runPlayerCommand(command: () => Promise<PlayerState>) {
 }
 
 function progressPercent(progress: DownloadProgressPayload): number | null {
+  if (progress.status === 'done') {
+    return 100;
+  }
+
   if (progress.totalBytes && progress.totalBytes > 0) {
-    return Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes);
+    return Math.min(99, Math.floor((Math.min(progress.downloadedBytes, progress.totalBytes) * 100) / progress.totalBytes));
   }
   if (progress.totalSegments && progress.totalSegments > 0) {
     const currentSegmentProgress =
@@ -304,7 +394,10 @@ function progressPercent(progress: DownloadProgressPayload): number | null {
           progress.currentSegmentTotalBytes
         : 0;
     const completedSegments = Math.min(progress.completedSegments, progress.totalSegments);
-    return Math.floor(((completedSegments + currentSegmentProgress) * 100) / progress.totalSegments);
+    return Math.min(
+      99,
+      Math.floor(((completedSegments + currentSegmentProgress) * 100) / progress.totalSegments)
+    );
   }
   return null;
 }

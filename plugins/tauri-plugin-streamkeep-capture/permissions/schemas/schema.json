@@ -295,18 +295,6 @@
       "type": "string",
       "oneOf": [
         {
-          "description": "Enables the createThumbnail command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-createThumbnail",
-          "markdownDescription": "Enables the createThumbnail command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the createThumbnail command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-createThumbnail",
-          "markdownDescription": "Denies the createThumbnail command without any pre-configured scope."
-        },
-        {
           "description": "Enables the deletePublishedDownload command without any pre-configured scope.",
           "type": "string",
           "const": "allow-deletePublishedDownload",

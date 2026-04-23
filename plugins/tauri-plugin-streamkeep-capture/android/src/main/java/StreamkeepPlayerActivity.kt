@@ -31,6 +31,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import app.tauri.plugin.JSObject
 import org.json.JSONArray
 import org.json.JSONObject
@@ -454,16 +455,19 @@ class StreamkeepPlayerActivity : Activity() {
     }
   }
 
-  private fun iconToolbarButton(label: String, icon: String, onClick: () -> Unit): Button {
-    return Button(this).apply {
+  private fun iconToolbarButton(label: String, icon: String, onClick: () -> Unit): TextView {
+    return TextView(this).apply {
       text = icon
       contentDescription = label
-      isAllCaps = false
       minWidth = dp(40)
       minHeight = dp(40)
       setTextColor(Color.rgb(245, 247, 247))
       setTypeface(typeface, Typeface.BOLD)
       textSize = 22f
+      gravity = Gravity.CENTER
+      includeFontPadding = false
+      isClickable = true
+      isFocusable = true
       background = roundedBackground(Color.rgb(32, 40, 43), Color.rgb(51, 65, 69))
       setOnClickListener { onClick() }
     }
@@ -521,6 +525,7 @@ class StreamkeepPlayerActivity : Activity() {
         detectedCancelButton.isEnabled = false
         detectedDownloadButton.isEnabled = false
         detectedDownloadButton.text = "Starting..."
+        Toast.makeText(this@StreamkeepPlayerActivity, "Streamkeep download started", Toast.LENGTH_SHORT).show()
         StreamkeepPlayerRegistry.requestDownload(payload, detectedFileNameField.text.toString())
         hideDetectedPane()
       }

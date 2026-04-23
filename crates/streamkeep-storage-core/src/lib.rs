@@ -37,8 +37,6 @@ pub struct DownloadJobRecord {
     pub output_path: Option<String>,
     pub output_uri: Option<String>,
     pub output_bytes: Option<u64>,
-    #[serde(default)]
-    pub thumbnail_path: Option<String>,
     pub error_message: Option<String>,
 }
 
@@ -77,7 +75,6 @@ impl DownloadJobRecord {
             output_path: None,
             output_uri: None,
             output_bytes: None,
-            thumbnail_path: None,
             error_message: None,
         }
     }
@@ -85,7 +82,12 @@ impl DownloadJobRecord {
     pub fn apply_progress(&mut self, status: DownloadJobStatus, progress: Option<u8>) {
         self.status = status;
         if let Some(progress) = progress {
-            self.progress = self.progress.max(progress.min(100));
+            let capped = if status == DownloadJobStatus::Done {
+                100
+            } else {
+                progress.min(99)
+            };
+            self.progress = self.progress.max(capped);
         }
         self.updated_at = now_timestamp();
     }
@@ -95,14 +97,12 @@ impl DownloadJobRecord {
         output_path: impl Into<String>,
         output_uri: impl Into<String>,
         output_bytes: u64,
-        thumbnail_path: Option<String>,
     ) {
         self.status = DownloadJobStatus::Done;
         self.progress = 100;
         self.output_path = Some(output_path.into());
         self.output_uri = Some(output_uri.into());
         self.output_bytes = Some(output_bytes);
-        self.thumbnail_path = thumbnail_path;
         self.error_message = None;
         self.updated_at = now_timestamp();
     }
@@ -194,5 +194,26 @@ mod tests {
         record.apply_progress(DownloadJobStatus::Downloading, Some(38));
 
         assert_eq!(record.progress, 42);
+    }
+
+    #[test]
+    fn apply_progress_reaches_100_only_when_done() {
+        let mut record = DownloadJobRecord::queued(QueuedDownloadJob {
+            title: "Title".to_owned(),
+            output_name: "Title.mp4".to_owned(),
+            page_url: "https://example.test/watch".to_owned(),
+            master_url: "https://example.test/master.m3u8".to_owned(),
+            media_playlist_url: None,
+            referer: None,
+            user_agent: None,
+            cookies: None,
+            quality: "Best available".to_owned(),
+        });
+
+        record.apply_progress(DownloadJobStatus::Downloading, Some(100));
+        assert_eq!(record.progress, 99);
+
+        record.apply_progress(DownloadJobStatus::Done, Some(100));
+        assert_eq!(record.progress, 100);
     }
 }

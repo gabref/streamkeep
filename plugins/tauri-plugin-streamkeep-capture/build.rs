@@ -11,7 +11,6 @@ const COMMANDS: &[&str] = &[
     "loadUrl",
     "remuxToMp4",
     "publishToDownloads",
-    "createThumbnail",
     "deletePublishedDownload",
     "startDownloadKeepAlive",
     "stopDownloadKeepAlive",

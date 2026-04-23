@@ -17,7 +17,7 @@ export interface CaptureRequestPayload {
   headingTitle: string | null;
   titleSuggestion: string | null;
   detectedAt: string;
-  source: 'webview' | 'service-worker';
+  source: 'webview' | 'service-worker' | 'manual';
   requestType: CaptureRequestType;
   confidence: CaptureConfidence;
 }

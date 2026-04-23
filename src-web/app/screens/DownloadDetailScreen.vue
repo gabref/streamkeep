@@ -16,12 +16,6 @@
       v-if="job"
       class="sectionBlock"
     >
-      <img
-        v-if="job.thumbnailUrl"
-        alt=""
-        class="detailThumbnail"
-        :src="job.thumbnailUrl"
-      >
       <div class="progressLine">
         <ProgressBar
           :value="job.progress"
@@ -53,10 +47,6 @@
         <div v-if="job.outputBytes">
           <dt>Size</dt>
           <dd>{{ formatBytes(job.outputBytes) }}</dd>
-        </div>
-        <div v-if="job.thumbnailPath">
-          <dt>Thumbnail</dt>
-          <dd>{{ job.thumbnailPath }}</dd>
         </div>
         <div v-if="job.errorMessage">
           <dt>Error</dt>
