@@ -1,8 +1,8 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,8 @@ use crate::core::settings::commands::effective_download_directory;
 use crate::core::settings::commands::unique_file_path;
 
 const HISTORY_PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_secs(2);
+
+static HISTORY_IO_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -470,27 +472,110 @@ fn delete_private_file_if_app_owned(path: &str) {
 }
 
 fn persist_job_record(history_path: &Path, record: DownloadJobRecord) -> Result<(), String> {
-    let mut history = read_download_history(history_path)?;
-    history.upsert(record);
-    write_download_history(history_path, &history)
+    with_history_lock(|| {
+        let mut history = read_download_history_unlocked(history_path)?;
+        history.upsert(record);
+        write_download_history_unlocked(history_path, &history)
+    })
 }
 
 fn read_download_history(history_path: &Path) -> Result<DownloadHistory, String> {
+    with_history_lock(|| read_download_history_unlocked(history_path))
+}
+
+fn write_download_history(history_path: &Path, history: &DownloadHistory) -> Result<(), String> {
+    with_history_lock(|| write_download_history_unlocked(history_path, history))
+}
+
+fn with_history_lock<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let _guard = HISTORY_IO_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "Streamkeep download history lock is poisoned".to_owned())?;
+    operation()
+}
+
+fn read_download_history_unlocked(history_path: &Path) -> Result<DownloadHistory, String> {
     if !history_path.exists() {
         return Ok(DownloadHistory::default());
     }
 
     let body = fs::read_to_string(history_path).map_err(|error| error.to_string())?;
-    serde_json::from_str(&body).map_err(|error| error.to_string())
+    if body.trim().is_empty() {
+        return Ok(DownloadHistory::default());
+    }
+
+    match serde_json::from_str(&body) {
+        Ok(history) => Ok(history),
+        Err(error) => {
+            if let Some(history) = recover_first_download_history(&body) {
+                warn!(
+                    ?error,
+                    path = %history_path.display(),
+                    "recovered Streamkeep download history with trailing data"
+                );
+                if let Err(write_error) = write_download_history_unlocked(history_path, &history) {
+                    warn!(
+                        ?write_error,
+                        path = %history_path.display(),
+                        "failed to rewrite recovered Streamkeep download history"
+                    );
+                }
+                return Ok(history);
+            }
+
+            quarantine_invalid_history(history_path, &body, &error)?;
+            Ok(DownloadHistory::default())
+        }
+    }
 }
 
-fn write_download_history(history_path: &Path, history: &DownloadHistory) -> Result<(), String> {
+fn write_download_history_unlocked(
+    history_path: &Path,
+    history: &DownloadHistory,
+) -> Result<(), String> {
     if let Some(parent) = history_path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
 
     let body = serde_json::to_string_pretty(history).map_err(|error| error.to_string())?;
-    fs::write(history_path, body).map_err(|error| error.to_string())
+    let temp_path = history_path.with_extension("json.tmp");
+    fs::write(&temp_path, body).map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    if history_path.exists() {
+        fs::remove_file(history_path).map_err(|error| error.to_string())?;
+    }
+
+    fs::rename(&temp_path, history_path).map_err(|error| error.to_string())
+}
+
+fn recover_first_download_history(body: &str) -> Option<DownloadHistory> {
+    serde_json::Deserializer::from_str(body)
+        .into_iter::<DownloadHistory>()
+        .next()
+        .and_then(Result::ok)
+}
+
+fn quarantine_invalid_history(
+    history_path: &Path,
+    body: &str,
+    error: &serde_json::Error,
+) -> Result<(), String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let backup_path = history_path.with_extension(format!("json.invalid-{timestamp}"));
+
+    warn!(
+        ?error,
+        path = %history_path.display(),
+        backup_path = %backup_path.display(),
+        "quarantining unreadable Streamkeep download history"
+    );
+    fs::write(&backup_path, body).map_err(|write_error| write_error.to_string())?;
+    fs::remove_file(history_path).map_err(|remove_error| remove_error.to_string())
 }
 
 fn final_output_directory<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -635,5 +720,55 @@ impl<R: Runtime> Drop for DownloadKeepAlive<R> {
         } else {
             debug!("stopped Streamkeep Android download keep-alive service");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DownloadHistory, read_download_history};
+    use std::{fs, path::PathBuf};
+    use uuid::Uuid;
+
+    #[test]
+    fn recovers_history_with_trailing_characters_and_rewrites_file() {
+        let (directory, history_path) = temp_history_path();
+        fs::create_dir_all(&directory).expect("create temp history directory");
+        fs::write(&history_path, r#"{"jobs":[]}}"#).expect("write malformed history");
+
+        let history = read_download_history(&history_path).expect("read recovered history");
+
+        assert!(history.jobs.is_empty());
+        let rewritten = fs::read_to_string(&history_path).expect("read rewritten history");
+        serde_json::from_str::<DownloadHistory>(&rewritten)
+            .expect("rewritten history is valid JSON");
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn quarantines_unrecoverable_history_and_allows_empty_history() {
+        let (directory, history_path) = temp_history_path();
+        fs::create_dir_all(&directory).expect("create temp history directory");
+        fs::write(&history_path, "not json").expect("write invalid history");
+
+        let history = read_download_history(&history_path).expect("read default history");
+
+        assert!(history.jobs.is_empty());
+        assert!(!history_path.exists());
+        let backup_count = fs::read_dir(&directory)
+            .expect("read temp history directory")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".invalid-"))
+            .count();
+        assert_eq!(backup_count, 1);
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    fn temp_history_path() -> (PathBuf, PathBuf) {
+        let directory =
+            std::env::temp_dir().join(format!("streamkeep-history-test-{}", Uuid::new_v4()));
+        let history_path = directory.join("history.json");
+        (directory, history_path)
     }
 }
